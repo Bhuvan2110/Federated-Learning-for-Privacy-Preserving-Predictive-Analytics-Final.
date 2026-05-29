@@ -1,6 +1,17 @@
 # Federated Learning Privacy-Preserving Predictive Analytics Platform
 
 This is a comprehensive, from-scratch implementation of a Federated Learning platform designed for privacy-preserving predictive analytics. Built without relying on third-party ML libraries (no scikit-learn, PyTorch, or TensorFlow), this platform implements mathematical models directly in pure Python.
+---
+
+## 🌍 Live Demo (Global Access)
+
+The platform is deployed globally and accessible at the following URLs:
+
+| Service | URL |
+|---|---|
+| 🖥️ **Frontend UI** | [https://fl-frontend-r56c.onrender.com](https://fl-frontend-r56c.onrender.com) |
+| 📡 **Backend REST API** | [https://fl-backend-4l71.onrender.com](https://fl-backend-4l71.onrender.com) |
+| 📖 **Swagger / API Docs** | [https://fl-backend-4l71.onrender.com/docs](https://fl-backend-4l71.onrender.com/docs) |
 
 ---
 
