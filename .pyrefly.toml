@@ -1,0 +1,35 @@
+# Only analyse the actual backend source — nothing else
+project_includes = ["backend/app", "backend/tests"]
+project_excludes = [
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "frontend/**",
+    ".venv/**",
+    "mlflow/**",
+]
+
+# Python version used inside the Docker container
+python_version = "3.10"
+
+# Point to the virtualenv that has the project dependencies installed
+# (fall back to system Python if venv not present)
+site_package_path = [
+    "/home/bhuvans/Documents/final/.venv/lib/python3.14/site-packages",
+    "/home/bhuvans/.local/lib/python3.14/site-packages",
+]
+
+# Extra roots so that `from app.xxx import ...` resolves correctly
+search_path = ["backend"]
+
+# Suppress import errors for packages that are only installed
+# inside the Docker container (fastapi, sqlalchemy, pydantic, etc.)
+ignore_missing_imports = true
+
+[errors]
+# Turn off errors that can never be fixed in virtual/inmemory snippets
+missing-import = false
+missing-source = false
+# Suppress false positives from pyrefly analyzing isolated in-memory code
+# fragments out of context (e.g. multi-line expressions, inline comments)
+parse-error = false
+unresolved-name = false
