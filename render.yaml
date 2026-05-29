@@ -1,0 +1,43 @@
+services:
+  # ─── Backend: FastAPI ───────────────────────────────────────────────────────
+  - type: web
+    name: fl-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Set this manually in the Render dashboard
+      - key: REDIS_URL
+        fromService:
+          name: fl-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: UPLOAD_DIR
+        value: /app/data/uploads
+      - key: PYTHONPATH
+        value: /app
+
+  # ─── Frontend: React + Vite (Static Site) ──────────────────────────────────
+  - type: web
+    name: fl-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: fl-backend
+          type: web
+          property: host
+          envVarKey: VITE_API_URL
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  - type: redis
+    name: fl-redis
+    plan: free
+    ipAllowList: []
