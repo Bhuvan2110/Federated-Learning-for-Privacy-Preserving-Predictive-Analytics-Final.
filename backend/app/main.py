@@ -44,6 +44,24 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    # --- SAFE MIGRATION: add csv_content column if it doesn't exist ---
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS csv_content TEXT"
+                )
+            )
+            conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE datasets ALTER COLUMN filepath DROP NOT NULL"
+                )
+            )
+            conn.commit()
+        print("Migration: csv_content column ensured on datasets table.")
+    except Exception as mig_err:
+        print(f"Migration note: {mig_err}")
+
     yield  # Application runs here
 
     # --- SHUTDOWN (optional cleanup) ---

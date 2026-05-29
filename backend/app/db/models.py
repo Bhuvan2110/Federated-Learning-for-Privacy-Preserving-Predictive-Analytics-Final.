@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, JSON, DateTime, LargeBinary
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, JSON, DateTime, LargeBinary, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.session import Base
@@ -23,7 +23,8 @@ class Dataset(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     filename = Column(String, nullable=False)
-    filepath = Column(String, nullable=False)
+    filepath = Column(String, nullable=True)   # kept for legacy rows; new uploads use csv_content
+    csv_content = Column(Text, nullable=True)  # stores the raw CSV text in DB (survives redeploys)
     metadata_json = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

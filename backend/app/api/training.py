@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Any, cast
+import csv
+from io import StringIO
 import random
 from app.db.session import get_db, SessionLocal
 from app.db.models import Experiment, Dataset, ModelWeight, User
@@ -49,7 +51,7 @@ async def start_federated_training(
 
     exp_id: int = cast(int, experiment.id)
     background_tasks.add_task(  # type: ignore[arg-type]
-        run_training_stub, exp_id, config, str(dataset.filepath)
+        run_training_stub, exp_id, config
     )
 
     return {"message": "Training job started", "experiment_id": exp_id}
@@ -125,7 +127,6 @@ def _build_weights_payload(weights: list[float], bias: float) -> dict[str, Any]:
 def run_training_stub(
     experiment_id: int,
     config: dict[str, Any],
-    dataset_path: str,
 ) -> None:
     db = SessionLocal()  # type: ignore[no-untyped-call]
 
