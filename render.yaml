@@ -34,7 +34,6 @@ services:
           name: fl-backend
           type: web
           property: host
-          envVarKey: VITE_API_URL
 
   # ─── Redis ──────────────────────────────────────────────────────────────────
   - type: redis
