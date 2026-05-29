@@ -4,28 +4,6 @@ This is a comprehensive, from-scratch implementation of a Federated Learning pla
 
 ---
 
-## 🌍 Live Demo (Global Access)
-
-The platform is deployed globally via Cloudflare Tunnel and accessible from anywhere:
-
-| Service | URL |
-|---|---|
-| 🖥️ **Frontend UI** | https://hoping-railway-completion-bloggers.trycloudflare.com |
-| 📡 **Backend REST API** | https://hoping-railway-completion-bloggers.trycloudflare.com/api/ |
-| 📖 **Swagger / API Docs** | https://hoping-railway-completion-bloggers.trycloudflare.com/api/docs |
-| 🔬 **MLflow Experiment Tracker** | http://localhost:5000 *(local only)* |
-| 📊 **Grafana Dashboard** | http://localhost:3001 *(local only)* |
-
-### 🔑 Default Login Credentials
-| Field | Value |
-|---|---|
-| **Email** | `sbhuvan847@gmail.com` |
-| **Password** | `SuperAdmin123!` |
-
-> **Note:** The public URL changes each time the tunnel restarts (free Cloudflare tier). Run `bash keep_tunnel.sh` to start an auto-restarting tunnel and get the latest URL printed to the terminal.
-
----
-
 ## System Architecture
 
 The platform follows a robust microservices-oriented architecture running entirely within Docker:
