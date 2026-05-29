@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { UploadCloud, CheckCircle, XCircle, FileText, Eye, RefreshCw, Database, Trash2 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const rawApiUrl = import.meta.env.VITE_API_URL || '';
+const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
 
 const Datasets = () => {
   const [isDragging, setIsDragging] = useState(false);

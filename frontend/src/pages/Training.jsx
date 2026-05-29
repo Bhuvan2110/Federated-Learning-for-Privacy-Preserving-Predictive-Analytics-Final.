@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Cpu, Globe, Settings, BarChart2, CheckCircle, AlertCircle, Eye, TrendingUp, Trash2 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const rawApiUrl = import.meta.env.VITE_API_URL || '';
+const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
 
 const Training = () => {
   const [mode, setMode] = useState('federated');

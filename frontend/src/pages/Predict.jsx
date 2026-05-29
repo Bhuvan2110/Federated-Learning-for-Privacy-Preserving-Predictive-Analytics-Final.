@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Database, Settings, FileText, CheckCircle, UploadCloud, Play, ArrowRight, Sparkles, Activity, AlertCircle, BarChart2 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const rawApiUrl = import.meta.env.VITE_API_URL || '';
+const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
 
 const Predict = () => {
   // Datasets list

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, Users, Database, TrendingUp, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const rawApiUrl = import.meta.env.VITE_API_URL || '';
+const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
 
 const Dashboard = () => {
   const navigate = useNavigate();
