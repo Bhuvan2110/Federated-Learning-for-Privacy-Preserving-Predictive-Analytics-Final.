@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Database, Settings, FileText, CheckCircle, UploadCloud, Play, ArrowRight, Sparkles, Activity, AlertCircle, BarChart2 } from 'lucide-react';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
+import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
 
 const Predict = () => {
   // Datasets list
@@ -32,21 +31,16 @@ const Predict = () => {
   const [batchLoading, setBatchLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const headers = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
   // Fetch datasets and completed models on mount
   const loadInitialData = async () => {
     setLoadingDatasets(true);
     setLoadingModels(true);
     try {
-      const dsRes = await fetch(`${API_BASE}/api/datasets/list`, { headers: headers() });
+      const dsRes = await apiFetch(`/api/datasets/list`, { headers: authHeaders() });
       const dsData = await dsRes.json();
       setDatasets(dsData.datasets || []);
 
-      const mRes = await fetch(`${API_BASE}/api/training/compare`, { headers: headers() });
+      const mRes = await apiFetch(`/api/training/compare`, { headers: authHeaders() });
       const mData = await mRes.json();
       setModels(mData.experiments?.filter(e => e.status === 'completed') || []);
     } catch (err) {
@@ -128,11 +122,11 @@ const Predict = () => {
         return isNaN(parsed) ? valStr : parsed;
       });
 
-      const res = await fetch(`${API_BASE}/api/predict/single`, {
+      const res = await apiFetch(`/api/predict/single`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...headers(),
+          ...authHeaders(),
         },
         body: JSON.stringify({
           model_id: parseInt(selectedModelId),
@@ -166,11 +160,11 @@ const Predict = () => {
     formData.append('file', batchFile);
 
     try {
-      const res = await fetch(
-        `${API_BASE}/api/predict/batch?model_id=${parseInt(selectedModelId)}&platt_a=1.0&platt_b=0.0`,
+      const res = await apiFetch(
+        `/api/predict/batch?model_id=${parseInt(selectedModelId)}&platt_a=1.0&platt_b=0.0`,
         {
           method: 'POST',
-          headers: headers(),
+          headers: authHeaders(),
           body: formData,
         }
       );

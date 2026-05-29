@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, Users, Database, TrendingUp, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
+import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -12,18 +11,13 @@ const Dashboard = () => {
   const [userEmail, setUserEmail] = useState('');
   const [recentExperiments, setRecentExperiments] = useState([]);
 
-  const headers = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
       const [meRes, datasetsRes, trainRes] = await Promise.all([
-        fetch(`${API_BASE}/api/auth/me`, { headers: headers() }),
-        fetch(`${API_BASE}/api/datasets/list`, { headers: headers() }),
-        fetch(`${API_BASE}/api/training/compare`, { headers: headers() }),
+        apiFetch(`/api/auth/me`, { headers: authHeaders() }),
+        apiFetch(`/api/datasets/list`, { headers: authHeaders() }),
+        apiFetch(`/api/training/compare`, { headers: authHeaders() }),
       ]);
 
       if (meRes.ok) {

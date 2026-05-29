@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { UploadCloud, CheckCircle, XCircle, FileText, Eye, RefreshCw, Database, Trash2 } from 'lucide-react';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
+import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
 
 const Datasets = () => {
   const [isDragging, setIsDragging] = useState(false);
@@ -16,15 +15,10 @@ const Datasets = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const fileInputRef = useRef(null);
 
-  const headers = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
   const fetchDatasets = useCallback(async () => {
     setLoadingList(true);
     try {
-      const res = await fetch(`${API_BASE}/api/datasets/list`, { headers: headers() });
+      const res = await apiFetch(`/api/datasets/list`, { headers: authHeaders() });
       const data = await res.json();
       setDatasets(data.datasets || []);
     } catch (_) {
@@ -49,9 +43,9 @@ const Datasets = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch(`${API_BASE}/api/datasets/upload`, {
+      const res = await apiFetch(`/api/datasets/upload`, {
         method: 'POST',
-        headers: headers(),
+        headers: authHeaders(),
         body: formData,
       });
       const data = await res.json();
@@ -71,7 +65,7 @@ const Datasets = () => {
     }
     setLoadingPreview(id);
     try {
-      const res = await fetch(`${API_BASE}/api/datasets/preview/${id}`, { headers: headers() });
+      const res = await apiFetch(`/api/datasets/preview/${id}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Preview failed');
       setPreview({ id, name, ...data });
@@ -86,9 +80,9 @@ const Datasets = () => {
     setDeletingId(id);
     setConfirmDeleteId(null);
     try {
-      const res = await fetch(`${API_BASE}/api/datasets/${id}`, {
+      const res = await apiFetch(`/api/datasets/${id}`, {
         method: 'DELETE',
-        headers: headers(),
+        headers: authHeaders(),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Delete failed');

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
+import { apiFetch, API_BASE } from '../utils/apiFetch';
 
 // Replace with your actual Google OAuth Client ID
 // You can get one from https://console.cloud.google.com/
@@ -72,7 +71,7 @@ const Login = () => {
       const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
       const { email, sub: google_id, name } = payload;
 
-      const res = await fetch(`${API_BASE}/api/auth/google-login`, {
+      const res = await apiFetch(`/api/auth/google-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, google_id, name }),
@@ -101,7 +100,7 @@ const Login = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      const res = await apiFetch(`/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -129,7 +128,7 @@ const Login = () => {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
+      const res = await apiFetch(`/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -256,7 +255,7 @@ const Login = () => {
               setGoogleLoading(true);
               setError('');
               try {
-                const mockRes = await fetch(`${API_BASE}/api/auth/google-login`, {
+                const mockRes = await apiFetch(`/api/auth/google-login`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({

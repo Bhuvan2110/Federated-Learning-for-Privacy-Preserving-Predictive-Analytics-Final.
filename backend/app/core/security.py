@@ -12,38 +12,56 @@ import os
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGORITHM = "RS256"
-# Persist RSA keypair to prevent logging out users on server restart/reload
-KEY_PATH = "/tmp/jwt_private.pem"
-private_key = None
 
-if os.path.exists(KEY_PATH):
-    try:
-        with open(KEY_PATH, "rb") as key_file:
-            private_key = serialization.load_pem_private_key(
-                key_file.read(),
-                password=None,
-                backend=default_backend()
+def _load_or_create_rsa_key():
+    """
+    Load the RSA private key from the database (via env var JWT_PRIVATE_KEY),
+    or from /tmp/ as a fallback, or generate a new one.
+    Storing the key in an env var / DB means it survives Render redeploys
+    so existing tokens remain valid.
+    """
+    # 1. Try env var (set this in Render dashboard once, never changes)
+    key_pem_env = os.getenv("JWT_PRIVATE_KEY", "")
+    if key_pem_env:
+        try:
+            key_pem = key_pem_env.replace("\\n", "\n").encode()
+            return serialization.load_pem_private_key(
+                key_pem, password=None, backend=default_backend()
             )
-    except Exception:
-        private_key = None
+        except Exception:
+            pass
 
-if not private_key:
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend()
+    # 2. Try disk cache (/tmp — works within a single deployment lifetime)
+    KEY_PATH = "/tmp/jwt_private.pem"
+    if os.path.exists(KEY_PATH):
+        try:
+            with open(KEY_PATH, "rb") as key_file:
+                return serialization.load_pem_private_key(
+                    key_file.read(), password=None, backend=default_backend()
+                )
+        except Exception:
+            pass
+
+    # 3. Generate new key (only happens on first-ever startup)
+    key = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048, backend=default_backend()
     )
     try:
-        pem = private_key.private_bytes(
+        pem = key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
+            encryption_algorithm=serialization.NoEncryption(),
         )
         with open(KEY_PATH, "wb") as key_file:
             key_file.write(pem)
+        print("NEW RSA key generated. Copy the value below into Render env var JWT_PRIVATE_KEY:")
+        print(pem.decode())
     except Exception:
         pass
+    return key
 
+
+private_key = _load_or_create_rsa_key()
 public_key = private_key.public_key()
 
 private_pem = private_key.private_bytes(
@@ -61,10 +79,12 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        # 7-day expiry — users stay logged in without being kicked out
+        expire = datetime.now(timezone.utc) + timedelta(days=7)
     to_encode = {"exp": expire, "sub": str(subject)}
     encoded_jwt = jwt.encode(to_encode, private_pem, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 def create_refresh_token(subject: Union[str, Any]) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=7)

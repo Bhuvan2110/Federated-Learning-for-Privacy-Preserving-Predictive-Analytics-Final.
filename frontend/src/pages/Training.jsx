@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Cpu, Globe, Settings, BarChart2, CheckCircle, AlertCircle, Eye, TrendingUp, Trash2 } from 'lucide-react';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-const API_BASE = (rawApiUrl && !/^https?:\/\//i.test(rawApiUrl)) ? `https://${rawApiUrl}` : rawApiUrl;
+import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
 
 const Training = () => {
   const [mode, setMode] = useState('federated');
@@ -26,11 +25,6 @@ const Training = () => {
   const [metricsData, setMetricsData] = useState(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [historyTrigger, setHistoryTrigger] = useState(0);
-
-  const headers = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
 
   const simulateProgress = (phases) => {
     return new Promise((resolve) => {
@@ -73,11 +67,11 @@ const Training = () => {
 
     try {
       const [apiRes] = await Promise.all([
-        fetch(`${API_BASE}/api/training/federated`, {
+        apiFetch(`/api/training/federated`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...headers(),
+            ...authHeaders(),
           },
           body: JSON.stringify({
             dataset_id: parseInt(datasetId),
@@ -126,11 +120,11 @@ const Training = () => {
 
     try {
       const [apiRes] = await Promise.all([
-        fetch(`${API_BASE}/api/training/federated`, {
+        apiFetch(`/api/training/federated`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...headers(),
+            ...authHeaders(),
           },
           body: JSON.stringify({
             dataset_id: parseInt(datasetId),
@@ -163,7 +157,7 @@ const Training = () => {
     setLoadingMetrics(true);
     setMetricsData(null);
     try {
-      const res = await fetch(`${API_BASE}/api/metrics/${id}`, { headers: headers() });
+      const res = await apiFetch(`/api/metrics/${id}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to fetch metrics');
       setMetricsData(data);
@@ -452,16 +446,11 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deleteError, setDeleteError] = useState('');
 
-  const headers = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
   const fetchExperiments = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/api/training/compare`, {
+      const res = await apiFetch(`/api/training/compare`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -475,9 +464,9 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
     setConfirmDeleteId(null);
     setDeleteError('');
     try {
-      const res = await fetch(`${API_BASE}/api/training/${id}`, {
+      const res = await apiFetch(`/api/training/${id}`, {
         method: 'DELETE',
-        headers: headers(),
+        headers: authHeaders(),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Delete failed');
