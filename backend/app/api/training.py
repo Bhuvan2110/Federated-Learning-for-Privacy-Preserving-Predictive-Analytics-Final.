@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Any, cast
 import random
-import time
 from app.db.session import get_db, SessionLocal
 from app.db.models import Experiment, Dataset, ModelWeight, User
 from app.api.dependencies import get_current_user
@@ -156,9 +155,10 @@ def run_training_stub(
         base_loss: float = 0.8
         base_acc: float = 0.5
 
+        # Compute all rounds without any sleep so the background task
+        # completes before Render's worker can be recycled.
+        all_weights: list[ModelWeight] = []
         for r in range(1, rounds + 1):
-            time.sleep(0.5)
-
             weights: list[float] = [random.uniform(-1.0, 1.0) for _ in range(num_features)]
             bias: float = random.uniform(-0.5, 0.5)
             improvement: float = r / rounds
@@ -171,8 +171,11 @@ def run_training_stub(
                 weights_json=_build_weights_payload(weights, bias),
                 metrics_json=_build_round_metrics(loss, accuracy),
             )
-            db.add(mw)
-            db.commit()
+            all_weights.append(mw)
+
+        # Single bulk insert + commit — much faster and atomic
+        db.add_all(all_weights)
+        db.commit()
 
         experiment.status = "completed"  # type: ignore[assignment]
         db.commit()
