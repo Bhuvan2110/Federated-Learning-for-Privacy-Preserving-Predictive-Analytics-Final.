@@ -4,20 +4,63 @@ import { apiFetch, authHeaders } from '../utils/apiFetch';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/** Known sex/gender column name patterns */
-const SEX_COLS = /^(sex|gender|Sex|Gender|SEX|GENDER)$/;
+/**
+ * KNOWN_DOMAINS — hardcoded dropdown options for well-known dataset columns.
+ * This covers the Heart Disease (Cleveland / Kaggle) dataset and common
+ * medical/clinical datasets. Takes priority over metadata-based detection.
+ *
+ * type: 'select'  → render a <select> with the given options
+ * type: 'number'  → render <input type="number"> with optional min/max/step
+ */
+const KNOWN_DOMAINS = {
+  // ── Heart Disease dataset columns ──────────────────────────────────────────
+  ChestPainType:   { type: 'select', options: ['ATA', 'NAP', 'ASY', 'TA'],
+                     hint: 'ATA=Atypical Angina, NAP=Non-Anginal Pain, ASY=Asymptomatic, TA=Typical Angina' },
+  RestingBP:       { type: 'number', min: 0, max: 250, step: 1,
+                     hint: 'Resting blood pressure (mm Hg)' },
+  Cholesterol:     { type: 'number', min: 0, max: 700, step: 1,
+                     hint: 'Serum cholesterol (mg/dl)' },
+  FastingBS:       { type: 'select', options: ['0', '1'],
+                     hint: 'Fasting blood sugar > 120 mg/dl: 1 = Yes, 0 = No' },
+  RestingECG:      { type: 'select', options: ['Normal', 'ST', 'LVH'],
+                     hint: 'Normal, ST-T wave abnormality, Left ventricular hypertrophy' },
+  MaxHR:           { type: 'number', min: 60, max: 220, step: 1,
+                     hint: 'Maximum heart rate achieved' },
+  ExerciseAngina:  { type: 'select', options: ['Y', 'N'],
+                     hint: 'Exercise-induced angina: Y = Yes, N = No' },
+  Oldpeak:         { type: 'number', min: -3, max: 7, step: 0.1,
+                     hint: 'ST depression induced by exercise relative to rest' },
+  ST_Slope:        { type: 'select', options: ['Up', 'Flat', 'Down'],
+                     hint: 'Slope of the peak exercise ST segment' },
 
-/** Known age column patterns */
-const AGE_COLS = /^(age|Age|AGE|age_years|age_at_diagnosis)$/i;
+  // ── Sex / Gender (any case) ────────────────────────────────────────────────
+  Sex:    { type: 'select', options: ['M', 'F'] },
+  sex:    { type: 'select', options: ['Male', 'Female', 'Other'] },
+  gender: { type: 'select', options: ['Male', 'Female', 'Other'] },
+  Gender: { type: 'select', options: ['Male', 'Female', 'Other'] },
+
+  // ── Age ───────────────────────────────────────────────────────────────────
+  Age: { type: 'number', min: 1, max: 120, step: 1, hint: 'Age in years' },
+  age: { type: 'number', min: 1, max: 120, step: 1, hint: 'Age in years' },
+
+  // ── Common binary yes/no flags ─────────────────────────────────────────────
+  HeartDisease: { type: 'select', options: ['0', '1'] },
+};
 
 /**
  * Given a column name + its stats from the dataset metadata,
  * return which input type to render and what options to offer.
+ *
+ * Priority order:
+ *  1. KNOWN_DOMAINS hardcoded map  (exact column name match)
+ *  2. Metadata unique_values from dataset upload  (categorical ≤20)
+ *  3. Metadata is_numeric flag
+ *  4. Fallback → text input
  */
 function getInputConfig(col, stats = {}) {
-  // 1. Sex / gender → hardcoded dropdown
-  if (SEX_COLS.test(col)) {
-    return { type: 'select', options: ['Male', 'Female', 'Other'] };
+  // 1. Hardcoded domain map — highest priority
+  if (KNOWN_DOMAINS[col]) {
+    return KNOWN_DOMAINS[col];
   }
 
   // 2. Categorical: non-numeric with ≤20 unique values stored → dropdown
@@ -30,8 +73,8 @@ function getInputConfig(col, stats = {}) {
     return { type: 'select', options: stats.unique_values };
   }
 
-  // 4. Age or any other numeric column → number input
-  if (stats.is_numeric || AGE_COLS.test(col)) {
+  // 4. Numeric column → number input
+  if (stats.is_numeric) {
     return { type: 'number' };
   }
 
@@ -210,6 +253,7 @@ const Predict = () => {
           value={value}
           onChange={onChange}
           required
+          title={cfg.hint || ''}
         >
           <option value="">— select —</option>
           {cfg.options.map(opt => (
@@ -225,11 +269,18 @@ const Predict = () => {
           type="number"
           className="input-field"
           style={{ ...baseStyle, marginBottom: 0 }}
-          placeholder={AGE_COLS.test(col) ? 'e.g. 45' : 'Numeric value'}
+          placeholder={
+            cfg.min !== undefined && cfg.max !== undefined
+              ? `${cfg.min} – ${cfg.max}`
+              : 'Numeric value'
+          }
           value={value}
           onChange={onChange}
           required
-          step="any"
+          step={cfg.step ?? 'any'}
+          min={cfg.min}
+          max={cfg.max}
+          title={cfg.hint || ''}
         />
       );
     }
@@ -340,17 +391,24 @@ const Predict = () => {
                       const cfg = getInputConfig(col, stats);
                       return (
                         <div key={col}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '600' }}>
-                            {col}
-                            {/* Badge showing input type */}
-                            <span style={{
-                              fontSize: '9px', padding: '1px 5px', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                              background: cfg.type === 'select' ? 'rgba(99,102,241,0.15)' : cfg.type === 'number' ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.06)',
-                              color: cfg.type === 'select' ? '#818cf8' : cfg.type === 'number' ? '#34d399' : 'var(--text-secondary)',
-                            }}>
-                              {cfg.type === 'select' ? 'list' : cfg.type === 'number' ? 'num' : 'text'}
-                            </span>
-                          </label>
+                          <div style={{ marginBottom: '5px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '600' }}>
+                              {col}
+                              {/* Badge showing input type */}
+                              <span style={{
+                                fontSize: '9px', padding: '1px 5px', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                background: cfg.type === 'select' ? 'rgba(99,102,241,0.15)' : cfg.type === 'number' ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.06)',
+                                color: cfg.type === 'select' ? '#818cf8' : cfg.type === 'number' ? '#34d399' : 'var(--text-secondary)',
+                              }}>
+                                {cfg.type === 'select' ? 'list' : cfg.type === 'number' ? 'num' : 'text'}
+                              </span>
+                            </label>
+                            {cfg.hint && (
+                              <p style={{ fontSize: '10px', color: 'var(--text-secondary)', margin: '2px 0 0 0', opacity: 0.7, lineHeight: 1.3 }}>
+                                {cfg.hint}
+                              </p>
+                            )}
+                          </div>
                           {renderFeatureInput(col)}
                         </div>
                       );
