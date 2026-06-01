@@ -16,17 +16,31 @@ const Layout = ({ children }) => (
   </div>
 );
 
-function App() {
-  const isAuthenticated = !!localStorage.getItem('token');
+/**
+ * PrivateRoute — checks localStorage on EVERY render.
+ * This is the critical fix: using a plain `const isAuthenticated` inside App()
+ * only evaluates once at mount, so after login (token saved → navigate) the
+ * parent component doesn't re-render and the redirect back to /login fires.
+ * By moving the check into a child component, it re-evaluates on every
+ * route change, correctly allowing access after the token is stored.
+ */
+const PrivateRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  return token ? children : <Navigate to="/login" replace />;
+};
 
+function App() {
   return (
     <Router>
       <Routes>
+        {/* Public route */}
         <Route path="/login" element={<Login />} />
-        <Route 
-          path="/*" 
+
+        {/* All protected routes — token checked fresh on every render */}
+        <Route
+          path="/*"
           element={
-            isAuthenticated ? (
+            <PrivateRoute>
               <Layout>
                 <Routes>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -36,10 +50,8 @@ function App() {
                   <Route path="/predict" element={<Predict />} />
                 </Routes>
               </Layout>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          } 
+            </PrivateRoute>
+          }
         />
       </Routes>
     </Router>
