@@ -1,61 +1,94 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Database, Settings, FileText, CheckCircle, UploadCloud, Play, ArrowRight, Sparkles, Activity, AlertCircle, BarChart2 } from 'lucide-react';
+import { Database, Settings, FileText, CheckCircle, UploadCloud, Play, Sparkles, Activity, AlertCircle } from 'lucide-react';
+import { apiFetch, authHeaders } from '../utils/apiFetch';
 
-import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Known sex/gender column name patterns */
+const SEX_COLS = /^(sex|gender|Sex|Gender|SEX|GENDER)$/;
+
+/** Known age column patterns */
+const AGE_COLS = /^(age|Age|AGE|age_years|age_at_diagnosis)$/i;
+
+/**
+ * Given a column name + its stats from the dataset metadata,
+ * return which input type to render and what options to offer.
+ */
+function getInputConfig(col, stats = {}) {
+  // 1. Sex / gender → hardcoded dropdown
+  if (SEX_COLS.test(col)) {
+    return { type: 'select', options: ['Male', 'Female', 'Other'] };
+  }
+
+  // 2. Categorical: non-numeric with ≤20 unique values stored → dropdown
+  if (!stats.is_numeric && stats.unique_values && stats.unique_values.length > 0) {
+    return { type: 'select', options: stats.unique_values };
+  }
+
+  // 3. Categorical numeric with ≤10 unique values (e.g. 0/1 flags) → dropdown
+  if (stats.is_numeric && stats.unique_values && stats.unique_values.length > 0 && stats.unique_values.length <= 10) {
+    return { type: 'select', options: stats.unique_values };
+  }
+
+  // 4. Age or any other numeric column → number input
+  if (stats.is_numeric || AGE_COLS.test(col)) {
+    return { type: 'number' };
+  }
+
+  // 5. Fallback: text
+  return { type: 'text' };
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 const Predict = () => {
-  // Datasets list
   const [datasets, setDatasets] = useState([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [loadingDatasets, setLoadingDatasets] = useState(true);
 
-  // Columns & Target state
   const [columns, setColumns] = useState([]);
+  const [colStats, setColStats] = useState({});
   const [targetColumn, setTargetColumn] = useState('');
 
-  // All completed experiments (trained models)
   const [models, setModels] = useState([]);
   const [selectedModelId, setSelectedModelId] = useState('');
   const [loadingModels, setLoadingModels] = useState(true);
 
-  // Interactive Single Prediction inputs
   const [featureValues, setFeatureValues] = useState({});
   const [singleResult, setSingleResult] = useState(null);
   const [singleError, setSingleError] = useState('');
   const [singleLoading, setSingleLoading] = useState(false);
 
-  // Batch prediction state
   const [batchFile, setBatchFile] = useState(null);
   const [batchResults, setBatchResults] = useState(null);
   const [batchError, setBatchError] = useState('');
   const [batchLoading, setBatchLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Fetch datasets and completed models on mount
-  const loadInitialData = async () => {
-    setLoadingDatasets(true);
-    setLoadingModels(true);
-    try {
-      const dsRes = await apiFetch(`/api/datasets/list`, { headers: authHeaders() });
-      const dsData = await dsRes.json();
-      setDatasets(dsData.datasets || []);
-
-      const mRes = await apiFetch(`/api/training/compare`, { headers: authHeaders() });
-      const mData = await mRes.json();
-      setModels(mData.experiments?.filter(e => e.status === 'completed') || []);
-    } catch (err) {
-      console.error('Failed to load initial prediction data', err);
-    } finally {
-      setLoadingDatasets(false);
-      setLoadingModels(false);
-    }
-  };
-
+  // ── Load on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadInitialData();
+    (async () => {
+      setLoadingDatasets(true);
+      setLoadingModels(true);
+      try {
+        const [dsRes, mRes] = await Promise.all([
+          apiFetch('/api/datasets/list', { headers: authHeaders() }),
+          apiFetch('/api/training/compare', { headers: authHeaders() }),
+        ]);
+        const dsData = await dsRes.json();
+        const mData = await mRes.json();
+        setDatasets(dsData.datasets || []);
+        setModels(mData.experiments?.filter(e => e.status === 'completed') || []);
+      } catch (err) {
+        console.error('Failed to load prediction data', err);
+      } finally {
+        setLoadingDatasets(false);
+        setLoadingModels(false);
+      }
+    })();
   }, []);
 
-  // When selected dataset changes
+  // ── Dataset selection ────────────────────────────────────────────────────────
   const handleDatasetChange = (datasetId) => {
     setSelectedDatasetId(datasetId);
     setSelectedModelId('');
@@ -65,77 +98,55 @@ const Predict = () => {
     setBatchError('');
 
     const ds = datasets.find(d => d.id === parseInt(datasetId));
-    if (ds && ds.metadata && ds.metadata.columns) {
-      const cols = ds.metadata.columns;
-      setColumns(cols);
-      // Default to the last column as the target
-      const defaultTarget = cols[cols.length - 1] || '';
-      setTargetColumn(defaultTarget);
+    if (ds?.metadata?.columns) {
+      setColumns(ds.metadata.columns);
+      setColStats(ds.metadata.stats || {});
+      setTargetColumn(ds.metadata.columns[ds.metadata.columns.length - 1] || '');
     } else {
       setColumns([]);
+      setColStats({});
       setTargetColumn('');
     }
   };
 
-  // Compute feature columns (all columns except the target column)
   const featureCols = columns.filter(col => col !== targetColumn);
 
-  // Reset/Initialize input fields when features list changes
+  // Reset inputs when features change
   useEffect(() => {
-    const initialVals = {};
-    featureCols.forEach(col => {
-      initialVals[col] = '';
-    });
-    setFeatureValues(initialVals);
+    const init = {};
+    featureCols.forEach(col => { init[col] = ''; });
+    setFeatureValues(init);
     setSingleResult(null);
     setBatchResults(null);
   }, [targetColumn, selectedDatasetId]);
 
-  // Filter completed models that match the selected dataset ID
   const matchingModels = models.filter(m => m.config?.dataset_id === parseInt(selectedDatasetId));
 
-  // Automatically select the first matching model
   useEffect(() => {
     if (matchingModels.length > 0 && !selectedModelId) {
       setSelectedModelId(matchingModels[0].id.toString());
     }
   }, [matchingModels, selectedModelId]);
 
-  // Submit Single Prediction
+  // ── Single prediction ────────────────────────────────────────────────────────
   const handleSinglePredict = async (e) => {
     e.preventDefault();
     if (!selectedModelId) { setSingleError('Please select a trained model'); return; }
-    if (featureCols.length === 0) { setSingleError('No features available'); return; }
-
     setSingleError('');
     setSingleResult(null);
     setSingleLoading(true);
-
     try {
-      // Collect and validate feature values in order of the featureCols list
       const features = featureCols.map(col => {
-        const valStr = featureValues[col];
-        if (valStr === undefined || valStr === '') {
-          throw new Error(`Please fill in value for ${col}`);
-        }
-        const parsed = parseFloat(valStr);
-        return isNaN(parsed) ? valStr : parsed;
+        const val = featureValues[col];
+        if (val === undefined || val === '') throw new Error(`Please fill in value for "${col}"`);
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? val : parsed;
       });
-
-      const res = await apiFetch(`/api/predict/single`, {
+      const res = await apiFetch('/api/predict/single', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders(),
-        },
-        body: JSON.stringify({
-          model_id: parseInt(selectedModelId),
-          features: features,
-          platt_a: 1.0,
-          platt_b: 0.0
-        })
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ model_id: parseInt(selectedModelId), features, platt_a: 1.0, platt_b: 0.0 }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Prediction failed');
       setSingleResult(data);
@@ -146,29 +157,21 @@ const Predict = () => {
     }
   };
 
-  // Submit Batch Prediction
+  // ── Batch prediction ─────────────────────────────────────────────────────────
   const handleBatchPredict = async (e) => {
     e.preventDefault();
     if (!selectedModelId) { setBatchError('Please select a trained model'); return; }
     if (!batchFile) { setBatchError('Please select a CSV file'); return; }
-
     setBatchError('');
     setBatchResults(null);
     setBatchLoading(true);
-
     const formData = new FormData();
     formData.append('file', batchFile);
-
     try {
       const res = await apiFetch(
         `/api/predict/batch?model_id=${parseInt(selectedModelId)}&platt_a=1.0&platt_b=0.0`,
-        {
-          method: 'POST',
-          headers: authHeaders(),
-          body: formData,
-        }
+        { method: 'POST', headers: authHeaders(), body: formData }
       );
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Batch prediction failed');
       setBatchResults(data.results || []);
@@ -179,150 +182,190 @@ const Predict = () => {
     }
   };
 
+  // ── Render a single feature input ────────────────────────────────────────────
+  const renderFeatureInput = (col) => {
+    const stats = colStats[col] || {};
+    const cfg = getInputConfig(col, stats);
+    const value = featureValues[col] !== undefined ? featureValues[col] : '';
+    const onChange = (e) => setFeatureValues(prev => ({ ...prev, [col]: e.target.value }));
+
+    const baseStyle = {
+      width: '100%',
+      padding: '9px 12px',
+      borderRadius: '8px',
+      border: '1px solid var(--border-color)',
+      background: 'var(--bg-secondary)',
+      color: 'var(--text-primary)',
+      fontSize: '13px',
+      outline: 'none',
+      boxSizing: 'border-box',
+      transition: 'border-color 0.2s',
+    };
+
+    if (cfg.type === 'select') {
+      return (
+        <select
+          className="input-field"
+          style={{ ...baseStyle, marginBottom: 0, cursor: 'pointer' }}
+          value={value}
+          onChange={onChange}
+          required
+        >
+          <option value="">— select —</option>
+          {cfg.options.map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+    }
+
+    if (cfg.type === 'number') {
+      return (
+        <input
+          type="number"
+          className="input-field"
+          style={{ ...baseStyle, marginBottom: 0 }}
+          placeholder={AGE_COLS.test(col) ? 'e.g. 45' : 'Numeric value'}
+          value={value}
+          onChange={onChange}
+          required
+          step="any"
+        />
+      );
+    }
+
+    return (
+      <input
+        type="text"
+        className="input-field"
+        style={{ ...baseStyle, marginBottom: 0 }}
+        placeholder="Value"
+        value={value}
+        onChange={onChange}
+        required
+      />
+    );
+  };
+
+  // ── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
         <Sparkles size={28} color="var(--accent-primary)" />
         <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }} className="text-gradient">
-          Interactive Inference & Prediction
+          Interactive Inference &amp; Prediction
         </h1>
       </div>
 
-      {/* Dataset & Targeting Configuration Row */}
+      {/* ── Step 1: Dataset + Model selection ─────────────────────────── */}
       <div className="glass" style={{ padding: '24px', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Database size={18} color="var(--accent-primary)" />
-          1. Select Trained Dataset & Target Variable
+          1. Select Dataset &amp; Trained Model
         </h2>
 
         {loadingDatasets ? (
-          <p style={{ color: 'var(--text-secondary)' }}>Loading uploaded datasets...</p>
+          <p style={{ color: 'var(--text-secondary)' }}>Loading datasets…</p>
         ) : datasets.length === 0 ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px' }}>
             <AlertCircle color="var(--danger)" />
             <span style={{ color: 'var(--text-secondary)' }}>
-              No datasets found. Please go to the <strong>Datasets</strong> page to upload a CSV and train a model first.
+              No datasets found. Upload a CSV on the <strong>Datasets</strong> page first.
             </span>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
+            {/* Dataset */}
             <div>
-              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: '500' }}>
-                Select Dataset
-              </label>
-              <select
-                className="input-field"
-                style={{ background: 'var(--bg-secondary)', marginBottom: 0 }}
-                value={selectedDatasetId}
-                onChange={(e) => handleDatasetChange(e.target.value)}
-              >
+              <label style={labelStyle}>Dataset</label>
+              <select className="input-field" style={selectStyle} value={selectedDatasetId} onChange={e => handleDatasetChange(e.target.value)}>
                 <option value="">Select a dataset</option>
-                {datasets.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.filename} (ID: {d.id})
-                  </option>
-                ))}
+                {datasets.map(d => <option key={d.id} value={d.id}>{d.filename} (ID: {d.id})</option>)}
               </select>
             </div>
 
-            {selectedDatasetId && columns.length > 0 && (
-              <>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: '500' }}>
-                    Target Column (To Predict)
-                  </label>
-                  <select
-                    className="input-field"
-                    style={{ background: 'var(--bg-secondary)', marginBottom: 0 }}
-                    value={targetColumn}
-                    onChange={(e) => setTargetColumn(e.target.value)}
-                  >
-                    {columns.map(col => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            {selectedDatasetId && columns.length > 0 && <>
+              {/* Target column */}
+              <div>
+                <label style={labelStyle}>Target Column (to predict)</label>
+                <select className="input-field" style={selectStyle} value={targetColumn} onChange={e => setTargetColumn(e.target.value)}>
+                  {columns.map(col => <option key={col} value={col}>{col}</option>)}
+                </select>
+              </div>
 
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: '500' }}>
-                    Trained Model / Experiment
-                  </label>
-                  <select
-                    className="input-field"
-                    style={{ background: 'var(--bg-secondary)', marginBottom: 0 }}
-                    value={selectedModelId}
-                    onChange={(e) => setSelectedModelId(e.target.value)}
-                  >
-                    <option value="">Choose completed model</option>
-                    {matchingModels.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} (ID: {m.id} - {m.algorithm})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
+              {/* Model */}
+              <div>
+                <label style={labelStyle}>Trained Model / Experiment</label>
+                <select className="input-field" style={selectStyle} value={selectedModelId} onChange={e => setSelectedModelId(e.target.value)}>
+                  <option value="">Choose completed model</option>
+                  {matchingModels.map(m => (
+                    <option key={m.id} value={m.id}>{m.name} — {m.algorithm}</option>
+                  ))}
+                </select>
+              </div>
+            </>}
           </div>
         )}
       </div>
 
-      {/* Prediction Forms */}
+      {/* ── Step 2: Prediction forms ───────────────────────────────────── */}
       {selectedDatasetId && columns.length > 0 && (
         <div className="animate-fade-in">
           {matchingModels.length === 0 ? (
             <div className="glass" style={{ padding: '24px', textAlign: 'center' }}>
               <AlertCircle size={32} color="var(--danger)" style={{ marginBottom: '12px' }} />
               <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>No Trained Models Found</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '500px', margin: '0 auto' }}>
-                There are no completed models for the dataset <strong>{datasets.find(d => d.id === parseInt(selectedDatasetId))?.filename}</strong>. Please go to the Training tab to run federated simulation first.
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                Run a federated training job for <strong>{datasets.find(d => d.id === parseInt(selectedDatasetId))?.filename}</strong> first.
               </p>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', alignItems: 'start' }}>
-              
-              {/* Single Prediction Form */}
+
+              {/* ── Single Prediction ──────────────────────────────────── */}
               <div className="glass" style={{ padding: '24px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Settings size={18} color="var(--accent-primary)" />
                   Option A: Single Prediction
                 </h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-                  Enter feature values (numerical or text/categorical like 'male', 'female', names) to predict the target variable <strong>{targetColumn}</strong>.
+                  Fill in feature values below to predict <strong style={{ color: 'var(--accent-primary)' }}>{targetColumn}</strong>.
+                  Dropdowns appear for categorical fields; numeric inputs for continuous values.
                 </p>
 
                 <form onSubmit={handleSinglePredict}>
-                  {/* Dynamic inputs for feature columns */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-                    {featureCols.map(col => (
-                      <div key={col}>
-                        <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={col}>
-                          {col}
-                        </label>
-                        <input
-                          type="text"
-                          className="input-field"
-                          style={{ marginBottom: 0 }}
-                          placeholder="Value (e.g. 5.1, male, Yes)"
-                          value={featureValues[col] !== undefined ? featureValues[col] : ''}
-                          onChange={(e) => setFeatureValues({ ...featureValues, [col]: e.target.value })}
-                          required
-                        />
-                      </div>
-                    ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+                    {featureCols.map(col => {
+                      const stats = colStats[col] || {};
+                      const cfg = getInputConfig(col, stats);
+                      return (
+                        <div key={col}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '600' }}>
+                            {col}
+                            {/* Badge showing input type */}
+                            <span style={{
+                              fontSize: '9px', padding: '1px 5px', borderRadius: '4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                              background: cfg.type === 'select' ? 'rgba(99,102,241,0.15)' : cfg.type === 'number' ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.06)',
+                              color: cfg.type === 'select' ? '#818cf8' : cfg.type === 'number' ? '#34d399' : 'var(--text-secondary)',
+                            }}>
+                              {cfg.type === 'select' ? 'list' : cfg.type === 'number' ? 'num' : 'text'}
+                            </span>
+                          </label>
+                          {renderFeatureInput(col)}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {singleError && (
                     <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>
-                      {singleError}
+                      ⚠ {singleError}
                     </div>
                   )}
 
                   <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={singleLoading}>
                     <Activity size={16} />
-                    {singleLoading ? 'Computing Prediction...' : 'Run Single Prediction'}
+                    {singleLoading ? 'Computing Prediction…' : 'Run Single Prediction'}
                   </button>
                 </form>
 
@@ -331,76 +374,54 @@ const Predict = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--success)', fontWeight: 600, fontSize: '15px', marginBottom: '14px' }}>
                       <CheckCircle size={18} /> Prediction Ready
                     </div>
-                    
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Target Variable:</span>
                       <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{targetColumn}</span>
                     </div>
-
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '14px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Predicted Output Class:</span>
-                      <span style={{ fontWeight: 'bold', fontSize: '16px' }}>{singleResult.class}</span>
+                      <span style={{ fontWeight: 'bold', fontSize: '18px' }}>{singleResult.class}</span>
                     </div>
-
                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                      Confidence Score: {(singleResult.confidence * 100).toFixed(2)}%
+                      Confidence: {(singleResult.confidence * 100).toFixed(2)}%
                     </div>
                     <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: `${singleResult.confidence * 100}%`, height: '100%', background: 'linear-gradient(to right, #10b981, #3b82f6)', borderRadius: '4px' }}></div>
+                      <div style={{ width: `${singleResult.confidence * 100}%`, height: '100%', background: 'linear-gradient(to right, #10b981, #3b82f6)', borderRadius: '4px', transition: 'width 0.5s ease' }} />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Batch Prediction Form */}
+              {/* ── Batch Prediction ───────────────────────────────────── */}
               <div className="glass" style={{ padding: '24px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={18} color="var(--accent-primary)" />
                   Option B: Batch Prediction (CSV)
                 </h3>
-                
+
                 <div style={{ padding: '12px 14px', background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
-                  <p style={{ fontWeight: 600, color: 'var(--accent-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <AlertCircle size={14} /> Expected CSV Layout:
-                  </p>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                    The CSV should contain headers and rows with feature values (numeric, text, or categorical values are supported) in the exact order:
-                  </p>
-                  <code style={{ display: 'block', background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', wordBreak: 'break-all', fontFamily: 'monospace', color: '#60a5fa', marginBottom: '6px' }}>
+                  <p style={{ fontWeight: 600, color: 'var(--accent-primary)', marginBottom: '4px' }}>Expected CSV column order:</p>
+                  <code style={{ display: 'block', background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', wordBreak: 'break-all', fontFamily: 'monospace', color: '#60a5fa' }}>
                     {featureCols.join(', ')}
                   </code>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '11px', margin: 0 }}>
-                    * The target column (<strong>{targetColumn}</strong>) and ID columns should be omitted.
+                  <p style={{ color: 'var(--text-secondary)', marginTop: '6px', marginBottom: 0 }}>
+                    Omit the target column (<strong>{targetColumn}</strong>).
                   </p>
                 </div>
 
                 <form onSubmit={handleBatchPredict}>
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    style={{
-                      padding: '30px 16px', textAlign: 'center',
-                      border: '1px dashed var(--border-color)', borderRadius: '12px',
-                      cursor: 'pointer', background: 'rgba(255,255,255,0.01)',
-                      marginBottom: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
-                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
+                    style={{ padding: '30px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: '12px', cursor: 'pointer', background: 'rgba(255,255,255,0.01)', marginBottom: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', transition: 'border-color 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
                   >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv"
-                      style={{ display: 'none' }}
-                      onChange={(e) => setBatchFile(e.target.files[0] || null)}
-                    />
+                    <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => setBatchFile(e.target.files[0] || null)} />
                     <UploadCloud size={32} color="var(--text-secondary)" />
                     <p style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: '500', margin: 0 }}>
                       {batchFile ? batchFile.name : 'Select Features CSV File'}
                     </p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>
-                      Drag & drop or browse your local files
-                    </p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>Click to browse</p>
                   </div>
 
                   {batchError && (
@@ -411,41 +432,35 @@ const Predict = () => {
 
                   <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={batchLoading}>
                     <Play size={16} />
-                    {batchLoading ? 'Processing Batch Inference...' : 'Run Batch Prediction'}
+                    {batchLoading ? 'Processing Batch Inference…' : 'Run Batch Prediction'}
                   </button>
                 </form>
 
                 {batchResults && (
                   <div className="animate-fade-in" style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', maxHeight: '280px', overflowY: 'auto' }}>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Batch Results ({batchResults.length} Rows)</span>
-                      <span style={{ color: 'var(--success)' }}>Success</span>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Batch Results ({batchResults.length} rows)</span>
+                      <span style={{ color: 'var(--success)' }}>✔ Done</span>
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                        <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Row</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Output Class</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Class</th>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Confidence</th>
                         </tr>
                       </thead>
                       <tbody>
                         {batchResults.map((r, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', hover: { background: 'rgba(255,255,255,0.01)' } }}>
-                            <td style={{ padding: '8px' }}>Row #{r.row}</td>
+                          <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                            <td style={{ padding: '8px' }}>#{r.row}</td>
                             <td style={{ padding: '8px', fontWeight: '600' }}>
-                              {r.error ? (
-                                <span style={{ color: 'var(--danger)' }}>Error</span>
-                              ) : (
-                                r.class
-                              )}
+                              {r.error ? <span style={{ color: 'var(--danger)' }}>Error</span> : r.class}
                             </td>
                             <td style={{ padding: '8px' }}>
-                              {r.error ? (
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>{r.error}</span>
-                              ) : (
-                                <span style={{ fontWeight: '500' }}>{(r.confidence * 100).toFixed(1)}%</span>
-                              )}
+                              {r.error
+                                ? <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>{r.error}</span>
+                                : `${(r.confidence * 100).toFixed(1)}%`}
                             </td>
                           </tr>
                         ))}
@@ -461,6 +476,15 @@ const Predict = () => {
       )}
     </div>
   );
+};
+
+// ── Style constants ────────────────────────────────────────────────────────────
+const labelStyle = {
+  display: 'block', marginBottom: '6px',
+  color: 'var(--text-secondary)', fontSize: '13px', fontWeight: '500',
+};
+const selectStyle = {
+  background: 'var(--bg-secondary)', marginBottom: 0,
 };
 
 export default Predict;

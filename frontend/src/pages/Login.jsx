@@ -95,16 +95,25 @@ const Login = () => {
     setConfirmPassword('');
   };
 
+  const fetchWithTimeout = (fetchPromise, ms = 15000) => {
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Server is taking too long to respond. Please try again.')), ms)
+    );
+    return Promise.race([fetchPromise, timeout]);
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch(`/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      const res = await fetchWithTimeout(
+        apiFetch(`/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Login failed');
       saveAndNavigate(data);
@@ -128,11 +137,13 @@ const Login = () => {
     }
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      const res = await fetchWithTimeout(
+        apiFetch(`/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Registration failed');
       saveAndNavigate(data);

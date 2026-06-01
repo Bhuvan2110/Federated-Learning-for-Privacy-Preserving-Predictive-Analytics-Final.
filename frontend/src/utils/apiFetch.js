@@ -28,10 +28,16 @@ export async function apiFetch(path, options = {}) {
 
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
+  // On 401: if we're already on the login page (e.g., bad credentials) just
+  // return the response so the caller can show an error message.
+  // If we're on any other page, clear auth and redirect to login.
   if (response.status === 401) {
+    if (window.location.pathname.includes('/login')) {
+      return response; // Let the login page handle it normally
+    }
     clearAuthAndRedirect();
-    // Return a never-resolving promise so calling code doesn't proceed
-    return new Promise(() => {});
+    // Throw so any awaiting caller doesn't continue with a stale response
+    throw new Error('Session expired. Please log in again.');
   }
 
   return response;

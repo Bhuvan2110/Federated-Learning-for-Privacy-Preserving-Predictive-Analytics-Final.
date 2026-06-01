@@ -115,20 +115,17 @@ def register(data: RegisterData, request: Request, db: Session = Depends(get_db)
 
 @router.post("/login")
 def login(data: LoginData, request: Request, db: Session = Depends(get_db)):
+    # Look up user — use .first() so SQLAlchemy stops at the first match
     user = db.query(User).filter(User.email == data.email).first()
+
+    # Verify credentials; avoid DB write on failure to keep the hot path fast
     if not user or not user.hashed_password or not verify_password(data.password, str(user.hashed_password)):
-        audit = AuditLog(
-            action="login_failed",
-            details=f"Failed login attempt for email: {data.email}",
-            ip_address=request.client.host if request.client else "unknown"
-        )
-        db.add(audit)
-        db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access_token = create_access_token(subject=user.id)
     refresh_token = create_refresh_token(subject=user.id)
 
+    # Only audit on success to avoid slow DB writes on every failed attempt
     audit = AuditLog(
         user_id=user.id,
         action="login_success",

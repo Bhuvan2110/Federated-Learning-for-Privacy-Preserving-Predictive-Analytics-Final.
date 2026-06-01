@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
-from app.db.session import engine, Base, SessionLocal
+from app.db.session import engine, Base, SessionLocal, _is_sqlite
 from app.db.models import User
 from app.core.security import get_password_hash
 from app.api import datasets, training, auth, predict, metrics, metrics_exporter
@@ -44,23 +44,24 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # --- SAFE MIGRATION: add csv_content column if it doesn't exist ---
-    try:
-        with engine.connect() as conn:
-            conn.execute(
-                __import__("sqlalchemy").text(
-                    "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS csv_content TEXT"
+    # --- SAFE MIGRATION: PostgreSQL-only DDL (SQLite gets schema via create_all) ---
+    if not _is_sqlite:
+        try:
+            with engine.connect() as conn:
+                conn.execute(
+                    __import__("sqlalchemy").text(
+                        "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS csv_content TEXT"
+                    )
                 )
-            )
-            conn.execute(
-                __import__("sqlalchemy").text(
-                    "ALTER TABLE datasets ALTER COLUMN filepath DROP NOT NULL"
+                conn.execute(
+                    __import__("sqlalchemy").text(
+                        "ALTER TABLE datasets ALTER COLUMN filepath DROP NOT NULL"
+                    )
                 )
-            )
-            conn.commit()
-        print("Migration: csv_content column ensured on datasets table.")
-    except Exception as mig_err:
-        print(f"Migration note: {mig_err}")
+                conn.commit()
+            print("Migration: csv_content column ensured on datasets table.")
+        except Exception as mig_err:
+            print(f"Migration note: {mig_err}")
 
     yield  # Application runs here
 

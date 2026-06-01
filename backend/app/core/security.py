@@ -9,7 +9,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 import os
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# rounds=4 (bcrypt minimum) gives ~3-5ms hash time → total login round-trip ≈20-25ms.
+# Increase to 10-12 for production deployments that can tolerate ~100-500ms.
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4)
 
 ALGORITHM = "RS256"
 

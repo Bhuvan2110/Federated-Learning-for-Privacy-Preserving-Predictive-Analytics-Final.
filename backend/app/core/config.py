@@ -1,15 +1,25 @@
 import os
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
+
+_SQLITE_FALLBACK = "sqlite:////tmp/fl_platform.db"
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Federated Learning Platform"
-    # Supabase PostgreSQL — project: zjeabvqcjextrubfuntf
-    # Set DATABASE_URL in your .env file (see .env for format)
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres.zjeabvqcjextrubfuntf:YOUR_DB_PASSWORD@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
-    )
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    DATABASE_URL: str = _SQLITE_FALLBACK  # default if env var is missing
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def resolve_db_url(cls, v: str) -> str:
+        """Fall back to SQLite when Supabase password placeholder is still set."""
+        if not v or "YOUR_DB_PASSWORD" in v:
+            print(
+                "[config] DATABASE_URL still contains placeholder — "
+                f"falling back to SQLite: {_SQLITE_FALLBACK}"
+            )
+            return _SQLITE_FALLBACK
+        return v
 
     class Config:
         env_file = ".env"

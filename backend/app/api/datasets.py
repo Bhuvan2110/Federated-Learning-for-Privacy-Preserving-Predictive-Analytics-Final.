@@ -12,6 +12,15 @@ from app.db.models import User
 router = APIRouter()
 
 
+def _try_float(val: str) -> bool:
+    """Return True if val can be parsed as a float."""
+    try:
+        float(val)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 @router.post("/upload")
 async def upload_dataset(
     file: UploadFile = File(...),
@@ -38,12 +47,23 @@ async def upload_dataset(
     # Simple automatic column profiler
     col_stats = {}
     for col in columns:
-        unique_vals = set(row[col] for row in rows if row.get(col))
+        vals = [row[col] for row in rows if row.get(col)]
+        unique_vals = sorted(set(vals))
         missing = sum(1 for row in rows if not row.get(col))
+
+        # Detect if column is numeric (try parsing all non-empty values)
+        is_numeric = all(
+            _try_float(v) for v in unique_vals
+        ) if unique_vals else True
+
         col_stats[col] = {
             "unique_counts": len(unique_vals),
             "missing_count": missing,
-            "missing_percentage": (missing / len(rows)) * 100
+            "missing_percentage": (missing / len(rows)) * 100,
+            "is_numeric": is_numeric,
+            # Store actual unique values only for categoricals (≤20 unique)
+            # so the Predict page can render dropdowns instead of free-text
+            "unique_values": unique_vals if len(unique_vals) <= 20 else [],
         }
 
     # Store CSV content directly in the database — no disk required.
