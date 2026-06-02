@@ -40,8 +40,8 @@ const KNOWN_DOMAINS = {
   Gender: { type: 'select', options: ['Male', 'Female', 'Other'] },
 
   // ── Age ───────────────────────────────────────────────────────────────────
-  Age: { type: 'number', min: 1, max: 120, step: 1, hint: 'Age in years' },
-  age: { type: 'number', min: 1, max: 120, step: 1, hint: 'Age in years' },
+  Age: { type: 'number', min: 0, max: 120, step: 1, hint: 'Age in years' },
+  age: { type: 'number', min: 0, max: 120, step: 1, hint: 'Age in years' },
 
   // ── Common binary yes/no flags ─────────────────────────────────────────────
   HeartDisease: { type: 'select', options: ['0', '1'] },
@@ -264,6 +264,11 @@ const Predict = () => {
     }
 
     if (cfg.type === 'number') {
+      // Only spread min/max when explicitly configured — passing undefined
+      // causes some browsers to silently restrict to 0+, blocking negatives.
+      const rangeProps = {};
+      if (cfg.min !== undefined) rangeProps.min = cfg.min;
+      if (cfg.max !== undefined) rangeProps.max = cfg.max;
       return (
         <input
           type="number"
@@ -278,8 +283,7 @@ const Predict = () => {
           onChange={onChange}
           required
           step={cfg.step ?? 'any'}
-          min={cfg.min}
-          max={cfg.max}
+          {...rangeProps}
           title={cfg.hint || ''}
         />
       );
