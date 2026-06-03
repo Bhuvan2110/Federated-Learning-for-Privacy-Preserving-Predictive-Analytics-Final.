@@ -17,7 +17,7 @@ class ChatPayload(BaseModel):
     apiKey: Optional[str] = None
     history: Optional[List[ChatMessage]] = None
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 SYSTEM_INSTRUCTION = (
     "You are a helpful, professional, and knowledgeable AI Assistant for the Federated Learning "
