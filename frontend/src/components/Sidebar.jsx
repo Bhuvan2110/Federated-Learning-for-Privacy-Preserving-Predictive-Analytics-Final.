@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Database, Activity, Target, LogOut, User, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Database, Activity, Target, LogOut, User, Menu, X, Sparkles } from 'lucide-react';
 
 const Sidebar = () => {
   const navigate  = useNavigate();
@@ -84,6 +84,33 @@ const Sidebar = () => {
             <span style={{ fontWeight: 500 }}>{item.name}</span>
           </NavLink>
         ))}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('toggle-ai-agent'))}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '10px 12px', borderRadius: '8px',
+            textDecoration: 'none',
+            color: 'var(--text-secondary)',
+            background: 'transparent',
+            border: 'none',
+            borderLeft: '3px solid transparent',
+            transition: 'all 0.2s', fontSize: '14px',
+            cursor: 'pointer',
+            width: '100%',
+            textAlign: 'left'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = 'white';
+            e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'var(--text-secondary)';
+            e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          <Sparkles size={20} color="#60a5fa" />
+          <span style={{ fontWeight: 500 }}>AI Assistant</span>
+        </button>
       </nav>
 
       {/* User info */}

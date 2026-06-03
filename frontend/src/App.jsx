@@ -6,6 +6,7 @@ import Datasets from './pages/Datasets';
 import Training from './pages/Training';
 import Predict from './pages/Predict';
 import Sidebar from './components/Sidebar';
+import AIAgentWidget from './components/AIAgentWidget';
 
 const Layout = ({ children }) => (
   <div className="app-container">
@@ -13,6 +14,7 @@ const Layout = ({ children }) => (
     <main className="main-content">
       {children}
     </main>
+    <AIAgentWidget />
   </div>
 );
 

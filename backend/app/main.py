@@ -7,7 +7,7 @@ from sqlalchemy.exc import OperationalError
 from app.db.session import engine, Base, SessionLocal, _is_sqlite
 from app.db.models import User
 from app.core.security import get_password_hash
-from app.api import datasets, training, auth, predict, metrics, metrics_exporter
+from app.api import datasets, training, auth, predict, metrics, metrics_exporter, agent
 
 
 @asynccontextmanager
@@ -83,6 +83,7 @@ app.include_router(datasets.router, prefix="/api/datasets", tags=["datasets"])
 app.include_router(training.router, prefix="/api/training", tags=["training"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(predict.router, prefix="/api/predict", tags=["predict"])
+app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
 app.include_router(metrics.router, prefix="/api/metrics", tags=["/metrics"])
 app.include_router(metrics_exporter.router, tags=["prometheus"])
 

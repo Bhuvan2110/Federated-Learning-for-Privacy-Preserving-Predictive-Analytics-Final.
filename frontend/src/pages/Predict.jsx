@@ -276,11 +276,8 @@ const Predict = () => {
     }
 
     if (cfg.type === 'number') {
-      // Only spread min/max when explicitly configured — passing undefined
-      // causes some browsers to silently restrict to 0+, blocking negatives.
-      const rangeProps = {};
-      if (cfg.min !== undefined) rangeProps.min = cfg.min;
-      if (cfg.max !== undefined) rangeProps.max = cfg.max;
+      // Do not enforce min/max as hard HTML inputs to allow testing
+      // the ML models with abnormal/adversarial values (like negative age).
       return (
         <input
           type="number"
@@ -288,14 +285,13 @@ const Predict = () => {
           style={{ ...baseStyle, marginBottom: 0 }}
           placeholder={
             cfg.min !== undefined && cfg.max !== undefined
-              ? `${cfg.min} – ${cfg.max}`
+              ? `Typical: ${cfg.min} – ${cfg.max}`
               : 'Numeric value'
           }
           value={value}
           onChange={onChange}
           required
           step={cfg.step ?? 'any'}
-          {...rangeProps}
           title={cfg.hint || ''}
         />
       );
