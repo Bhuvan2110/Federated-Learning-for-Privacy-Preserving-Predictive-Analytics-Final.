@@ -5,6 +5,17 @@ import { apiFetch, authHeaders } from '../utils/apiFetch';
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /**
+ * SKIP_COLUMNS — column names (case-insensitive, punctuation-stripped) that are
+ * row identifiers / serial numbers and should never be shown as feature inputs.
+ */
+const SKIP_PATTERN = /^(sl[._\s]?no|s[._\s]?no|serial[._\s]?no(\.|)?|row[._\s]?no|index|row|id|#|no\.)$/i;
+
+/** Returns true if the column is a serial-number / index column to skip. */
+function isSkipColumn(col) {
+  return SKIP_PATTERN.test(col.trim());
+}
+
+/**
  * KNOWN_DOMAINS — hardcoded dropdown options for well-known dataset columns.
  * This covers the Heart Disease (Cleveland / Kaggle) dataset and common
  * medical/clinical datasets. Takes priority over metadata-based detection.
@@ -152,7 +163,8 @@ const Predict = () => {
     }
   };
 
-  const featureCols = columns.filter(col => col !== targetColumn);
+  // Exclude the target column AND any serial-number / index columns (Sl.No, ID, etc.)
+  const featureCols = columns.filter(col => col !== targetColumn && !isSkipColumn(col));
 
   // Reset inputs when features change
   useEffect(() => {
