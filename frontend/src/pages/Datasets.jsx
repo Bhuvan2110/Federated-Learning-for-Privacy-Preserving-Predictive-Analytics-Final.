@@ -259,7 +259,7 @@ const Datasets = () => {
                       </tbody>
                     </table>
                   </div>
-                  </div>{/* table-scroll */}
+                  </div>
                 )}
               </div>
             ))}
