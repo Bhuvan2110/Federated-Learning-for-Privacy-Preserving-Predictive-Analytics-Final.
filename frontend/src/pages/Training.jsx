@@ -391,7 +391,7 @@ const Training = () => {
                 </div>
               </div>
 
-              {/* Progress Curves */}}
+              {/* Progress Curves */}
               {metricsData.curves && metricsData.curves.loss && metricsData.curves.loss.length > 0 && (
                 <div>
                   <h3 style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '12px' }}>Round-by-Round Training Progression</h3>
