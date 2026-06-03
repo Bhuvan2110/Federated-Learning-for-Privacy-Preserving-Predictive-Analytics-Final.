@@ -172,10 +172,10 @@ const Training = () => {
 
   return (
     <div className="animate-fade-in">
-      <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>Training</h1>
+      <h1 style={{ fontSize: 'clamp(20px, 4vw, 24px)', fontWeight: 'bold', marginBottom: '24px' }}>Training</h1>
 
-      {/* Mode Toggle */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '28px' }}>
+      {/* Mode Toggle — wraps on small screens */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '28px', flexWrap: 'wrap' }}>
         {[
           { key: 'federated', icon: Globe, label: 'Federated Training', desc: 'Multi-client distributed learning' },
           { key: 'centralized', icon: Cpu, label: 'Centralized Training', desc: 'Single-node classic training' },
@@ -221,7 +221,7 @@ const Training = () => {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
               Dataset ID <span style={{ color: '#f87171' }}>*</span>
@@ -376,7 +376,7 @@ const Training = () => {
             <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>Loading metrics...</div>
           ) : metricsData ? (
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+              <div className="grid-2" style={{ marginBottom: '20px' }}>
                 <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Final Loss</div>
                   <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f87171', marginTop: '4px' }}>
@@ -391,11 +391,11 @@ const Training = () => {
                 </div>
               </div>
 
-              {/* Progress Curves */}
+              {/* Progress Curves */}}
               {metricsData.curves && metricsData.curves.loss && metricsData.curves.loss.length > 0 && (
                 <div>
                   <h3 style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '12px' }}>Round-by-Round Training Progression</h3>
-                  <div style={{ overflowX: 'auto' }}>
+                  <div className="table-scroll">
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
                         <tr>
@@ -503,7 +503,7 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
         </div>
       )}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+      <div className="table-scroll">>
         <thead>
           <tr>
             {['ID', 'Name', 'Algorithm', 'Status', 'Created', 'Actions'].map((h) => (
@@ -583,17 +583,89 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
                         transition: 'background 0.2s',
                       }}
                       onMouseEnter={e => { if (exp.status !== 'running') e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              </td>
+      <div className="table-scroll">
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '560px' }}>
+          <thead>
+            <tr>
+              {['ID', 'Name', 'Algorithm', 'Status', 'Created', 'Actions'].map((h) => (
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {experiments.map((exp) => (
+              <tr key={exp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>#{exp.id}</td>
+                <td style={{ padding: '8px 12px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.name}</td>
+                <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{exp.algorithm}</td>
+                <td style={{ padding: '8px 12px' }}>
+                  <span style={{
+                    padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                    background: exp.status === 'completed' ? 'rgba(16,185,129,0.15)' : exp.status === 'running' ? 'rgba(59,130,246,0.15)' : 'rgba(148,163,184,0.15)',
+                    color: exp.status === 'completed' ? 'var(--success)' : exp.status === 'running' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                  }}>
+                    {exp.status}
+                  </span>
+                </td>
+                <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                  {exp.created_at ? new Date(exp.created_at).toLocaleString() : '—'}
+                </td>
+                <td style={{ padding: '8px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {exp.status === 'completed' && (
+                      <button
+                        onClick={() => onViewMetrics(exp.id)}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Eye size={12} /> View Results
+                      </button>
+                    )}
+                    {confirmDeleteId === exp.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: '#f87171' }}>Delete?</span>
+                        <button
+                          onClick={() => deleteExperiment(exp.id)}
+                          disabled={deletingId === exp.id}
+                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          {deletingId === exp.id ? '...' : 'Yes'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(exp.id)}
+                        disabled={exp.status === 'running' || deletingId === exp.id}
+                        title={exp.status === 'running' ? 'Cannot delete a running experiment' : 'Delete experiment'}
+                        style={{
+                          padding: '4px 6px', borderRadius: '5px',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          background: 'rgba(239,68,68,0.08)',
+                          color: exp.status === 'running' ? 'var(--text-secondary)' : '#f87171',
+                          cursor: exp.status === 'running' ? 'not-allowed' : 'pointer',
+                          display: 'flex', alignItems: 'center',
+                          opacity: exp.status === 'running' ? 0.4 : 1,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={e => { if (exp.status !== 'running') e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

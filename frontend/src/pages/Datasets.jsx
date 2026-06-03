@@ -98,8 +98,8 @@ const Datasets = () => {
 
   return (
     <div className="animate-fade-in">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Datasets</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '24px' }}>
+        <h1 style={{ fontSize: 'clamp(20px, 4vw, 24px)', fontWeight: 'bold' }}>Datasets</h1>
         <button
           onClick={fetchDatasets}
           style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', fontSize: '13px' }}
@@ -164,7 +164,7 @@ const Datasets = () => {
             {datasets.map((ds) => (
               <div key={ds.id}>
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '12px 16px',
                   background: 'rgba(255,255,255,0.03)', borderRadius: '8px',
                   border: preview?.id === ds.id ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
                   transition: 'border 0.2s',
@@ -237,7 +237,8 @@ const Datasets = () => {
                 </div>
 
                 {preview?.id === ds.id && (
-                  <div style={{ margin: '4px 0 8px', padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '0 0 8px 8px', border: '1px solid var(--border-color)', borderTop: 'none', overflowX: 'auto' }}>
+                  <div style={{ margin: '4px 0 8px', padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '0 0 8px 8px', border: '1px solid var(--border-color)', borderTop: 'none' }}>
+                  <div className="table-scroll">
                     <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px' }}>First 20 rows</p>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
@@ -258,6 +259,7 @@ const Datasets = () => {
                       </tbody>
                     </table>
                   </div>
+                  </div>{/* table-scroll */}
                 )}
               </div>
             ))}

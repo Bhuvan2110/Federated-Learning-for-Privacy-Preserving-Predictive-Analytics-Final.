@@ -319,7 +319,7 @@ const Predict = () => {
     <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
         <Sparkles size={28} color="var(--accent-primary)" />
-        <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }} className="text-gradient">
+        <h1 style={{ fontSize: 'clamp(18px, 4vw, 28px)', fontWeight: 'bold', margin: 0 }} className="text-gradient">
           Interactive Inference &amp; Prediction
         </h1>
       </div>
@@ -341,7 +341,7 @@ const Predict = () => {
             </span>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
             {/* Dataset */}
             <div>
               <label style={labelStyle}>Dataset</label>
@@ -387,7 +387,7 @@ const Predict = () => {
               </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', alignItems: 'start' }}>
 
               {/* ── Single Prediction ──────────────────────────────────── */}
               <div className="glass" style={{ padding: '24px' }}>
@@ -401,7 +401,7 @@ const Predict = () => {
                 </p>
 
                 <form onSubmit={handleSinglePredict}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '14px', marginBottom: '20px' }}>
                     {featureCols.map(col => {
                       const stats = colStats[col] || {};
                       const cfg = getInputConfig(col, stats);

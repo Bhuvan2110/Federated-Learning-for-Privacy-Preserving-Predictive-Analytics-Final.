@@ -1,21 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Database, Activity, Target, LogOut, User } from 'lucide-react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { LayoutDashboard, Database, Activity, Target, LogOut, User, Menu, X } from 'lucide-react';
 
 const Sidebar = () => {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const [userEmail, setUserEmail] = useState('');
+  const [open, setOpen] = useState(false); // mobile drawer
+
+  // Close drawer on route change
+  useEffect(() => { setOpen(false); }, [location.pathname]);
+
+  // Prevent body scroll when drawer is open
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
 
   useEffect(() => {
-    // Read from localStorage (set on login / /me fetch)
     const email = localStorage.getItem('userEmail') || '';
     setUserEmail(email);
-    // Also listen for storage changes (e.g., when Dashboard fetches /me)
     const handler = () => setUserEmail(localStorage.getItem('userEmail') || '');
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, []);
-  
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
@@ -25,46 +34,50 @@ const Sidebar = () => {
 
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard' },
-    { name: 'Datasets', icon: <Database size={20} />, path: '/datasets' },
-    { name: 'Training', icon: <Activity size={20} />, path: '/training' },
-    { name: 'Prediction', icon: <Target size={20} />, path: '/predict' },
+    { name: 'Datasets',  icon: <Database size={20} />,        path: '/datasets'  },
+    { name: 'Training',  icon: <Activity size={20} />,        path: '/training'  },
+    { name: 'Prediction',icon: <Target size={20} />,          path: '/predict'   },
   ];
 
-  const initials = userEmail
-    ? userEmail.charAt(0).toUpperCase()
-    : '?';
+  const initials = userEmail ? userEmail.charAt(0).toUpperCase() : '?';
 
-  return (
-    <div className="glass" style={{
-      width: '240px', minWidth: '240px', height: '100vh', borderRadius: '0',
-      padding: '20px 16px', display: 'flex', flexDirection: 'column',
-      borderRight: '1px solid var(--border-color)',
-      borderLeft: 'none', borderTop: 'none', borderBottom: 'none',
-    }}>
+  const SidebarContent = () => (
+    <>
       {/* Brand */}
-      <div style={{ marginBottom: '32px', paddingLeft: '8px' }}>
-        <h2 className="text-gradient" style={{ fontSize: '18px', fontWeight: 'bold' }}>FL Platform</h2>
-        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Federated Learning</p>
+      <div style={{ marginBottom: '32px', paddingLeft: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h2 className="text-gradient" style={{ fontSize: '18px', fontWeight: 'bold' }}>FL Platform</h2>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Federated Learning</p>
+        </div>
+        {/* Close button — visible only on mobile */}
+        <button
+          onClick={() => setOpen(false)}
+          style={{
+            display: 'none',
+            background: 'none', border: 'none', color: 'var(--text-secondary)',
+            cursor: 'pointer', padding: '4px',
+          }}
+          className="close-sidebar-btn"
+          aria-label="Close menu"
+        >
+          <X size={20} />
+        </button>
       </div>
-      
+
       {/* Nav links */}
       <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
         {navItems.map((item) => (
-          <NavLink 
-            key={item.name} 
+          <NavLink
+            key={item.name}
             to={item.path}
             style={({ isActive }) => ({
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px', 
-              padding: '10px 12px', 
-              borderRadius: '8px',
+              display: 'flex', alignItems: 'center', gap: '12px',
+              padding: '10px 12px', borderRadius: '8px',
               textDecoration: 'none',
               color: isActive ? 'white' : 'var(--text-secondary)',
               background: isActive ? 'rgba(59, 130, 246, 0.18)' : 'transparent',
               borderLeft: isActive ? '3px solid var(--accent-primary)' : '3px solid transparent',
-              transition: 'all 0.2s',
-              fontSize: '14px',
+              transition: 'all 0.2s', fontSize: '14px',
             })}
           >
             {item.icon}
@@ -101,10 +114,37 @@ const Sidebar = () => {
       )}
 
       <button onClick={handleLogout} className="btn btn-secondary" style={{ width: '100%', gap: '8px', fontSize: '13px' }}>
-        <LogOut size={16} />
-        Logout
+        <LogOut size={16} /> Logout
       </button>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Hamburger (mobile only) ── */}
+      <button className="hamburger" onClick={() => setOpen(true)} aria-label="Open menu">
+        <Menu size={22} />
+      </button>
+
+      {/* ── Overlay (mobile only) ── */}
+      <div
+        className={`sidebar-overlay${open ? ' open' : ''}`}
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* ── Sidebar panel ── */}
+      <aside className={`sidebar${open ? ' open' : ''}`}>
+        <SidebarContent />
+      </aside>
+
+      {/* Inline style to show close btn on mobile */}
+      <style>{`
+        @media (max-width: 640px) {
+          .close-sidebar-btn { display: flex !important; }
+        }
+      `}</style>
+    </>
   );
 };
 
