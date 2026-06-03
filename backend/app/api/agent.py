@@ -120,6 +120,8 @@ async def chat_with_agent(
                 "is_fallback": False
             }
             
+        except HTTPException as he:
+            raise he
         except httpx.HTTPError as e:
             raise HTTPException(status_code=500, detail=f"HTTP network error contacting Gemini API: {str(e)}")
         except Exception as e:
