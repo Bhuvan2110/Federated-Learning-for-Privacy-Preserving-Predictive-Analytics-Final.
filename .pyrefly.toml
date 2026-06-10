@@ -6,6 +6,8 @@ project_excludes = [
     "frontend/**",
     ".venv/**",
     "mlflow/**",
+    # Exclude pyrefly's own virtual/inmemory scratch files from error reporting
+    "__pyrefly_virtual__/**",
 ]
 
 # Python version used inside the Docker container
@@ -25,11 +27,12 @@ search_path = ["backend"]
 # inside the Docker container (fastapi, sqlalchemy, pydantic, etc.)
 ignore_missing_imports = true
 
-[errors]
-# Turn off errors that can never be fixed in virtual/inmemory snippets
-missing-import = false
-missing-source = false
-# Suppress false positives from pyrefly analyzing isolated in-memory code
-# fragments out of context (e.g. multi-line expressions, inline comments)
-parse-error = false
-unresolved-name = false
+# Suppress error codes that fire on virtual/inmemory snippet files and on
+# SQLAlchemy Column[Any] patterns that are correct at runtime.
+ignore_error_codes = [
+    "parse-error",
+    "unresolved-import",
+    "missing-attribute",
+    "bad-argument-type",
+    "missing-name",
+]

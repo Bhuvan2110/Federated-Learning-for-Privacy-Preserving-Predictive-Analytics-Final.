@@ -13,6 +13,13 @@ from app.api.dependencies import get_current_user
 router = APIRouter()
 
 
+def _json_to_dict(value: Any) -> dict[str, Any]:
+    """Safely convert a SQLAlchemy JSON column value to a plain dict."""
+    if isinstance(value, dict):
+        return {str(k): v for k, v in value.items()}
+    return {}
+
+
 @router.post("/federated")
 async def start_federated_training(
     config: dict[str, Any],
@@ -96,9 +103,8 @@ def compare_experiment_detail(
             loss_curve.append(float(mw.metrics_json.get("loss", 0.0)))
             acc_curve.append(float(mw.metrics_json.get("accuracy", 0.0)))
         if mw == model_weights[-1]:
-            raw_metrics = mw.metrics_json
-            final_metrics = {str(k): v for k, v in raw_metrics.items()} if isinstance(raw_metrics, dict) else {}
-            raw_wj: dict[str, Any] = mw.weights_json if isinstance(mw.weights_json, dict) else {}
+            final_metrics = _json_to_dict(mw.metrics_json)
+            raw_wj: dict[str, Any] = _json_to_dict(mw.weights_json)
             feature_weights = [float(w) for w in raw_wj.get("weights", [])]
 
     # ── Confusion matrix approximation ──────────────────────────────────────
@@ -125,8 +131,7 @@ def compare_experiment_detail(
 
     # ── Feature importance ───────────────────────────────────────────────────
     feature_names: list[str] = []
-    raw_config = experiment.config_json
-    config: dict[str, Any] = {str(k): v for k, v in raw_config.items()} if isinstance(raw_config, dict) else {}
+    config: dict[str, Any] = _json_to_dict(experiment.config_json)
     dataset_id = config.get("dataset_id")
     if dataset_id:
         dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
@@ -135,8 +140,7 @@ def compare_experiment_detail(
             # drop last column (assumed label)
             feature_names = [str(c) for c in cols[:-1]]
 
-    # pad / trim so lengths match
-    n = min(len(feature_weights), len(feature_names)) if feature_names else len(feature_weights)
+    # build feature importance list
     if not feature_names:
         feature_names = [f"feature_{i+1}" for i in range(len(feature_weights))]
 
