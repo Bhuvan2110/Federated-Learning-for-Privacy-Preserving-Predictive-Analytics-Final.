@@ -117,7 +117,7 @@ def preview_dataset(dataset_id: int, db: Session = Depends(get_db), current_user
         csv_text = dataset.csv_content
         if not csv_text:
             raise HTTPException(status_code=500, detail="CSV content not available. Please re-upload the dataset.")
-        csv_reader = csv.DictReader(StringIO(csv_text))
+        csv_reader = csv.DictReader(StringIO(str(csv_text)))
         for i, row in enumerate(csv_reader):
             if i >= 20:
                 break
