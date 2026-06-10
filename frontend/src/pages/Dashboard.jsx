@@ -1,147 +1,133 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Users, Database, TrendingUp, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Activity, Database, CheckCircle, Clock, TrendingUp, AlertCircle, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
+import { apiFetch, authHeaders } from '../utils/apiFetch';
+
+const StatCard = ({ title, value, icon, accent, onClick, loading }) => (
+  <div className="card card-hover" onClick={onClick} style={{ display:'flex', alignItems:'center', gap:'var(--s4)', padding:'var(--s4)' }}>
+    {loading ? (
+      <>
+        <div className="skeleton" style={{ width:'40px', height:'40px', borderRadius:'var(--r)', flexShrink:0 }}/>
+        <div style={{ flex:1 }}>
+          <div className="skeleton" style={{ width:'60%', height:'10px', marginBottom:'8px' }}/>
+          <div className="skeleton" style={{ width:'40%', height:'22px' }}/>
+        </div>
+      </>
+    ) : (
+      <>
+        <div style={{ width:'40px', height:'40px', borderRadius:'var(--r)', background:accent+'18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, color:accent }}>
+          {icon}
+        </div>
+        <div>
+          <p className="overline" style={{ marginBottom:'3px' }}>{title}</p>
+          <p className="stat-number tabular">{value}</p>
+        </div>
+      </>
+    )}
+  </div>
+);
+
+const statusBadge = (s) => {
+  if (s === 'completed') return <span className="badge badge-success">completed</span>;
+  if (s === 'running')   return <span className="badge badge-running">running</span>;
+  if (s === 'failed')    return <span className="badge badge-error">failed</span>;
+  return <span className="badge badge-neutral">{s}</span>;
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
-  const [recentExperiments, setRecentExperiments] = useState([]);
+  const [recentExps, setRecentExps] = useState([]);
+  const [role, setRole] = useState('');
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const [meRes, datasetsRes, trainRes] = await Promise.all([
-        apiFetch(`/api/auth/me`,          { headers: authHeaders() }),
-        apiFetch(`/api/datasets/list`,    { headers: authHeaders() }),
-        apiFetch(`/api/training/compare`, { headers: authHeaders() }),
+      const [meRes, dsRes, trainRes] = await Promise.all([
+        apiFetch('/api/auth/me',          { headers: authHeaders() }),
+        apiFetch('/api/datasets/list',    { headers: authHeaders() }),
+        apiFetch('/api/training/compare', { headers: authHeaders() }),
       ]);
-      if (meRes.ok) {
-        const me = await meRes.json();
-        setUserEmail(me.email);
-        localStorage.setItem('userEmail', me.email);
-      }
-      const datasetsData = datasetsRes.ok ? await datasetsRes.json() : { datasets: [] };
-      const trainingData = trainRes.ok   ? await trainRes.json()   : { experiments: [] };
-      const experiments  = trainingData.experiments || [];
-      const datasets     = datasetsData.datasets    || [];
+      if (meRes.ok) { const me = await meRes.json(); setUserEmail(me.email); localStorage.setItem('userEmail', me.email); }
+      const ds   = dsRes.ok   ? (await dsRes.json()).datasets    || [] : [];
+      const exps = trainRes.ok? (await trainRes.json()).experiments || [] : [];
       setStats({
-        totalDatasets:        datasets.length,
-        totalExperiments:     experiments.length,
-        completedExperiments: experiments.filter(e => e.status === 'completed').length,
-        runningExperiments:   experiments.filter(e => e.status === 'running').length,
-        failedExperiments:    experiments.filter(e => e.status === 'failed').length,
+        totalDatasets:        ds.length,
+        totalExperiments:     exps.length,
+        completedExperiments: exps.filter(e=>e.status==='completed').length,
+        runningExperiments:   exps.filter(e=>e.status==='running').length,
       });
-      setRecentExperiments(experiments.slice(0, 5));
-    } catch (err) {
-      console.error('Dashboard fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
+      setRecentExps(exps.slice(0,6));
+      setRole(localStorage.getItem('role')||'user');
+    } catch(err) { console.error(err); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(() => {
-      if (recentExperiments.some(e => e.status === 'running')) fetchDashboard();
-    }, 15000);
-    return () => clearInterval(interval);
+    const t = setInterval(()=>{ if(recentExps.some(e=>e.status==='running')) fetchDashboard(); }, 15000);
+    return ()=>clearInterval(t);
   }, [fetchDashboard]);
 
-  const statCards = stats ? [
-    { title: 'Datasets Uploaded',  value: stats.totalDatasets,        icon: <Database size={22} color="#a78bfa" />,                   color: '#a78bfa',             bg: 'rgba(167,139,250,0.1)', onClick: () => navigate('/datasets') },
-    { title: 'Total Experiments',  value: stats.totalExperiments,     icon: <Activity size={22} color="var(--accent-primary)" />,      color: 'var(--accent-primary)',bg: 'rgba(59,130,246,0.1)',  onClick: () => navigate('/training') },
-    { title: 'Completed Runs',     value: stats.completedExperiments, icon: <CheckCircle size={22} color="var(--success)" />,          color: 'var(--success)',       bg: 'rgba(16,185,129,0.1)', onClick: () => navigate('/training') },
-    { title: 'Active / Running',   value: stats.runningExperiments,   icon: <Clock size={22} color="#f59e0b" />,                       color: '#f59e0b',              bg: 'rgba(245,158,11,0.1)', onClick: () => navigate('/training') },
-  ] : [];
-
-  const statusColor = s => s === 'completed' ? 'var(--success)' : s === 'running' ? 'var(--accent-primary)' : s === 'failed' ? '#f87171' : 'var(--text-secondary)';
-  const statusBg    = s => s === 'completed' ? 'rgba(16,185,129,0.12)' : s === 'running' ? 'rgba(59,130,246,0.12)' : s === 'failed' ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.12)';
+  const cards = stats ? [
+    { title:'Datasets Uploaded',  value:stats.totalDatasets,        icon:<Database size={18}/>,      accent:'var(--phase-security)', onClick:()=>navigate('/datasets') },
+    { title:'Total Experiments',  value:stats.totalExperiments,     icon:<Activity size={18}/>,      accent:'var(--phase-training)', onClick:()=>navigate('/training') },
+    { title:'Completed Runs',     value:stats.completedExperiments, icon:<CheckCircle size={18}/>,   accent:'var(--phase-predict)',  onClick:()=>navigate('/training') },
+    { title:'Active / Running',   value:stats.runningExperiments,   icon:<Clock size={18}/>,         accent:'var(--phase-ui-ux)',    onClick:()=>navigate('/training') },
+  ] : [{},{},{},{}];
 
   return (
     <div className="animate-fade-in">
-      {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 'bold', marginBottom: '4px' }}>
-          Platform Overview
-        </h1>
-        {userEmail && (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Signed in as <strong style={{ color: 'var(--accent-primary)' }}>{userEmail}</strong>
-          </p>
-        )}
+      {/* Page header */}
+      <div className="page-header">
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:'var(--s3)' }}>
+          <div>
+            <h1 className="page-title">Platform Overview</h1>
+            {userEmail && (
+              <p className="page-sub">
+                Signed in as <span style={{ color:'var(--primary)', fontWeight:600 }}>{userEmail}</span>
+                {role && <span style={{ marginLeft:'8px' }}><span className="badge badge-neutral" style={{ verticalAlign:'middle' }}>{role}</span></span>}
+              </p>
+            )}
+          </div>
+          <button className="btn btn-secondary" onClick={fetchDashboard} style={{ gap:'5px', fontSize:'12px' }}>
+            <Activity size={13}/> Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Stat Cards — responsive auto-grid */}
-      <div className="grid-auto" style={{ marginBottom: '32px' }}>
-        {loading
-          ? [1,2,3,4].map(i => (
-              <div key={i} className="glass" style={{ padding: '24px', height: '90px' }}>
-                <div style={{ width: '60%', height: '12px', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', marginBottom: '10px' }} />
-                <div style={{ width: '40%', height: '22px', background: 'rgba(255,255,255,0.06)', borderRadius: '6px' }} />
-              </div>
-            ))
-          : statCards.map(card => (
-              <div
-                key={card.title}
-                className="glass"
-                onClick={card.onClick}
-                style={{ padding: '22px', display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', borderRadius: '12px' }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${card.bg}`; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)';     e.currentTarget.style.boxShadow = 'none'; }}
-              >
-                <div style={{ padding: '12px', background: card.bg, borderRadius: '12px', flexShrink: 0 }}>{card.icon}</div>
-                <div>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '4px' }}>{card.title}</p>
-                  <h2 style={{ fontSize: '30px', fontWeight: 'bold', color: card.color, lineHeight: 1 }}>{card.value}</h2>
-                </div>
-              </div>
-            ))
-        }
+      {/* Stat cards */}
+      <div className="grid-auto" style={{ marginBottom:'var(--s6)' }}>
+        {cards.map((c,i) => <StatCard key={i} {...c} loading={loading}/>)}
       </div>
 
-      {/* Recent Experiments */}
-      {!loading && recentExperiments.length > 0 && (
-        <div className="glass" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <TrendingUp size={16} color="var(--text-secondary)" />
-            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Recent Training Runs
-            </span>
-            <button
-              onClick={() => navigate('/training')}
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
-            >
-              View All →
+      {/* Recent experiments */}
+      {!loading && recentExps.length > 0 && (
+        <div className="card" style={{ padding:0, overflow:'hidden' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px var(--s4)', borderBottom:'0.5px solid var(--border-subtle)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'var(--s2)' }}>
+              <TrendingUp size={14} color="var(--text-muted)"/>
+              <span className="overline">Recent Training Runs</span>
+            </div>
+            <button onClick={()=>navigate('/training')} className="btn-icon" style={{ font:'var(--text-label-sm)', display:'flex', alignItems:'center', gap:'3px', color:'var(--primary)' }}>
+              View all <ArrowRight size={12}/>
             </button>
           </div>
-
-          {/* Horizontal scroll on mobile */}
           <div className="table-scroll">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '480px' }}>
+            <table className="data-table" style={{ minWidth:'520px' }}>
               <thead>
-                <tr>
-                  {['ID', 'Name', 'Algorithm', 'Status', 'Created'].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
+                <tr><th>ID</th><th>Name</th><th>Algorithm</th><th>Status</th><th>Created</th></tr>
               </thead>
               <tbody>
-                {recentExperiments.map(exp => (
-                  <tr key={exp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>#{exp.id}</td>
-                    <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.name}</td>
-                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{exp.algorithm}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, background: statusBg(exp.status), color: statusColor(exp.status), whiteSpace: 'nowrap' }}>
-                        {exp.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                      {exp.created_at ? new Date(exp.created_at).toLocaleString() : '—'}
-                    </td>
+                {recentExps.map(exp => (
+                  <tr key={exp.id}>
+                    <td><code>#{exp.id}</code></td>
+                    <td className="td-primary" style={{ maxWidth:'160px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{exp.name}</td>
+                    <td>{exp.algorithm}</td>
+                    <td>{statusBadge(exp.status)}</td>
+                    <td style={{ whiteSpace:'nowrap' }}>{exp.created_at ? new Date(exp.created_at).toLocaleString() : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -150,16 +136,19 @@ const Dashboard = () => {
         </div>
       )}
 
-      {!loading && recentExperiments.length === 0 && (
-        <div className="glass" style={{ padding: '40px', textAlign: 'center' }}>
-          <Activity size={40} color="var(--text-secondary)" style={{ margin: '0 auto 16px' }} />
-          <h3 style={{ marginBottom: '8px', fontWeight: 600 }}>No experiments yet</h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
-            Upload a dataset and start a training run to see your stats here.
+      {/* Empty state */}
+      {!loading && recentExps.length === 0 && (
+        <div className="card" style={{ padding:'40px', textAlign:'center' }}>
+          <div style={{ width:'44px', height:'44px', borderRadius:'var(--r-md)', background:'var(--surface-high)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto var(--s4)' }}>
+            <Activity size={22} color="var(--text-muted)"/>
+          </div>
+          <h3 style={{ font:'var(--text-headline-md)', color:'var(--text-primary)', marginBottom:'6px' }}>No experiments yet</h3>
+          <p style={{ font:'var(--text-body-md)', color:'var(--text-secondary)', marginBottom:'var(--s4)', maxWidth:'320px', margin:'0 auto var(--s4)' }}>
+            Upload a dataset and start a training run to see your statistics here.
           </p>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => navigate('/datasets')} className="btn btn-secondary" style={{ padding: '8px 20px' }}>Upload Dataset</button>
-            <button onClick={() => navigate('/training')} className="btn btn-primary"   style={{ padding: '8px 20px' }}>Start Training</button>
+          <div style={{ display:'flex', gap:'var(--s3)', justifyContent:'center', flexWrap:'wrap' }}>
+            <button onClick={()=>navigate('/datasets')} className="btn btn-secondary">Upload Dataset</button>
+            <button onClick={()=>navigate('/training')} className="btn btn-primary">Start Training</button>
           </div>
         </div>
       )}

@@ -186,9 +186,9 @@ const Training = () => {
             style={{
               flex: 1,
               padding: '16px 20px',
-              borderRadius: 'var(--r-md)',
-              border: mode === key ? '2px solid var(--primary)' : '2px solid var(--border-subtle)',
-              background: mode === key ? 'rgba(59,130,246,0.12)' : 'var(--surface-low)',
+              borderRadius: '12px',
+              border: mode === key ? '2px solid var(--accent-primary)' : '2px solid var(--border-color)',
+              background: mode === key ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)',
               cursor: 'pointer',
               textAlign: 'left',
               transition: 'all 0.2s ease',
@@ -202,7 +202,7 @@ const Training = () => {
               background: mode === key ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
-              <Icon size={20} color={mode === key ? 'var(--primary)' : 'var(--text-secondary)'} />
+              <Icon size={20} color={mode === key ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: '14px', color: mode === key ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{label}</div>
@@ -213,7 +213,7 @@ const Training = () => {
       </div>
 
       {/* Config Card */}
-      <div className="card" style={{ padding: '28px', marginBottom: '20px' }}>
+      <div className="glass" style={{ padding: '28px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
           <Settings size={16} color="var(--text-secondary)" />
           <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -224,7 +224,7 @@ const Training = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-              Dataset ID <span style={{ color: 'var(--error)' }}>*</span>
+              Dataset ID <span style={{ color: '#f87171' }}>*</span>
             </label>
             <input
               type="number"
@@ -242,7 +242,7 @@ const Training = () => {
               <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Algorithm</label>
               <select
                 className="input-field"
-                style={{ background: 'var(--surface-low)', marginBottom: 0 }}
+                style={{ background: 'var(--bg-secondary)', marginBottom: 0 }}
                 value={algorithm}
                 onChange={(e) => setAlgorithm(e.target.value)}
               >
@@ -297,7 +297,7 @@ const Training = () => {
         {error && (
           <div style={{
             marginTop: '16px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: 'var(--r)', padding: '10px 14px', color: 'var(--error)', fontSize: '13px',
+            borderRadius: '8px', padding: '10px 14px', color: '#f87171', fontSize: '13px',
             display: 'flex', alignItems: 'center', gap: '8px',
           }}>
             <AlertCircle size={15} /> {error}
@@ -321,16 +321,16 @@ const Training = () => {
       {isTraining && (
         <div className="glass animate-fade-in" style={{ padding: '24px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            {isFederated ? <Globe size={18} color="var(--primary)" /> : <Cpu size={18} color="var(--primary)" />}
-            <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
+            {isFederated ? <Globe size={18} color="var(--accent-primary)" /> : <Cpu size={18} color="var(--accent-primary)" />}
+            <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
               {isFederated ? 'Federated Aggregation' : 'Centralized Training'}
             </span>
             <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: '15px' }}>{progress}%</span>
           </div>
-          <div style={{ height: '10px', background: 'var(--surface-low)', borderRadius: '5px', overflow: 'hidden', marginBottom: '12px' }}>
+          <div style={{ height: '10px', background: 'var(--bg-secondary)', borderRadius: '5px', overflow: 'hidden', marginBottom: '12px' }}>
             <div style={{
               height: '100%', width: `${progress}%`,
-              background: 'linear-gradient(90deg, var(--primary), #a78bfa)',
+              background: 'linear-gradient(90deg, var(--accent-primary), #a78bfa)',
               transition: 'width 0.15s ease', borderRadius: '5px',
             }} />
           </div>
@@ -342,13 +342,13 @@ const Training = () => {
               {Array.from({ length: parseInt(clients) || 3 }).map((_, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '6px 12px', background: 'var(--surface-low)',
+                  padding: '6px 12px', background: 'rgba(255,255,255,0.05)',
                   borderRadius: '20px', fontSize: '12px', color: 'var(--text-secondary)',
                 }}>
                   <div style={{
                     width: '7px', height: '7px', borderRadius: '50%',
                     background: progress > (i + 1) * (100 / (parseInt(clients) || 3))
-                      ? '#085041' : 'var(--primary)',
+                      ? 'var(--success)' : 'var(--accent-primary)',
                     animation: 'pulse 1.2s ease-in-out infinite',
                     animationDelay: `${i * 0.2}s`,
                   }} />
@@ -363,10 +363,10 @@ const Training = () => {
 
       {/* Result Metrics panel */}
       {selectedExpId && (
-        <div className="glass animate-fade-in" style={{ padding: '24px', marginBottom: '24px', border: '1px solid var(--primary)' }}>
+        <div className="glass animate-fade-in" style={{ padding: '24px', marginBottom: '24px', border: '1px solid var(--accent-primary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <TrendingUp size={18} color="var(--primary)" />
+              <TrendingUp size={18} color="var(--accent-primary)" />
               <h2 style={{ fontSize: '16px', fontWeight: 'bold' }}>Training Results — Experiment #{selectedExpId}</h2>
             </div>
             <button onClick={() => setSelectedExpId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
@@ -377,15 +377,15 @@ const Training = () => {
           ) : metricsData ? (
             <div>
               <div className="grid-2" style={{ marginBottom: '20px' }}>
-                <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--r)', border: '0.5px solid var(--border-subtle)' }}>
+                <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Final Loss</div>
-                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--error)', marginTop: '4px' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f87171', marginTop: '4px' }}>
                     {metricsData.final_metrics?.loss ?? 'N/A'}
                   </div>
                 </div>
-                <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--r)', border: '0.5px solid var(--border-subtle)' }}>
+                <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Final Accuracy</div>
-                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#085041', marginTop: '4px' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--success)', marginTop: '4px' }}>
                     {metricsData.final_metrics?.accuracy ? `${(metricsData.final_metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
                   </div>
                 </div>
@@ -399,10 +399,10 @@ const Training = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
                         <tr>
-                          <th style={{ padding: '6px 12px', borderBottom: '0.5px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-secondary)' }}>Round / Epoch</th>
-                          <th style={{ padding: '6px 12px', borderBottom: '0.5px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-secondary)' }}>Loss</th>
-                          <th style={{ padding: '6px 12px', borderBottom: '0.5px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-secondary)' }}>Accuracy</th>
-                          <th style={{ padding: '6px 12px', borderBottom: '0.5px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-secondary)' }}>Progress Bar</th>
+                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Round / Epoch</th>
+                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Loss</th>
+                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Accuracy</th>
+                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Progress Bar</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -411,11 +411,11 @@ const Training = () => {
                           return (
                             <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
                               <td style={{ padding: '6px 12px', fontWeight: '600' }}>#{idx + 1}</td>
-                              <td style={{ padding: '6px 12px', color: 'var(--error)' }}>{lossVal.toFixed(4)}</td>
-                              <td style={{ padding: '6px 12px', color: '#085041' }}>{(accVal * 100).toFixed(1)}%</td>
+                              <td style={{ padding: '6px 12px', color: '#f87171' }}>{lossVal.toFixed(4)}</td>
+                              <td style={{ padding: '6px 12px', color: 'var(--success)' }}>{(accVal * 100).toFixed(1)}%</td>
                               <td style={{ padding: '6px 12px', width: '40%' }}>
-                                <div style={{ height: '6px', background: 'var(--surface-low)', borderRadius: '3px', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', width: `${accVal * 100}%`, background: '#085041' }} />
+                                <div style={{ height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${accVal * 100}%`, background: 'var(--success)' }} />
                                 </div>
                               </td>
                             </tr>
@@ -485,21 +485,21 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
   if (!experiments.length && !loading) return null;
 
   return (
-    <div className="card" style={{ padding: '24px' }}>
+    <div className="glass" style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
         <BarChart2 size={16} color="var(--text-secondary)" />
         <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           My Experiment History
         </span>
-        <button onClick={fetchExperiments} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>
+        <button onClick={fetchExperiments} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', fontSize: '12px' }}>
           ↻ Refresh
         </button>
       </div>
 
       {deleteError && (
-        <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: 'var(--error)', fontSize: '12px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#f87171', fontSize: '12px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {deleteError}
-          <button onClick={() => setDeleteError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}>✕</button>
+          <button onClick={() => setDeleteError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}>✕</button>
         </div>
       )}
 
@@ -508,21 +508,21 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
           <thead>
             <tr>
               {['ID', 'Name', 'Algorithm', 'Status', 'Created', 'Actions'].map((h) => (
-                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '0.5px solid var(--border-subtle)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {experiments.map((exp) => (
-              <tr key={exp.id} style={{ borderBottom: '1px solid var(--surface-low)' }}>
+              <tr key={exp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>#{exp.id}</td>
                 <td style={{ padding: '8px 12px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.name}</td>
                 <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{exp.algorithm}</td>
                 <td style={{ padding: '8px 12px' }}>
                   <span style={{
-                    padding: '3px 10px', borderRadius: 'var(--r-md)', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
-                    background: exp.status === 'completed' ? '#E1F5EE' : exp.status === 'running' ? 'var(--primary-fixed)' : 'rgba(148,163,184,0.15)',
-                    color: exp.status === 'completed' ? '#085041' : exp.status === 'running' ? 'var(--primary)' : 'var(--text-secondary)',
+                    padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                    background: exp.status === 'completed' ? 'rgba(16,185,129,0.15)' : exp.status === 'running' ? 'rgba(59,130,246,0.15)' : 'rgba(148,163,184,0.15)',
+                    color: exp.status === 'completed' ? 'var(--success)' : exp.status === 'running' ? 'var(--accent-primary)' : 'var(--text-secondary)',
                   }}>
                     {exp.status}
                   </span>
@@ -543,17 +543,17 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
                     )}
                     {confirmDeleteId === exp.id ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--error)' }}>Delete?</span>
+                        <span style={{ fontSize: '11px', color: '#f87171' }}>Delete?</span>
                         <button
                           onClick={() => deleteExperiment(exp.id)}
                           disabled={deletingId === exp.id}
-                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'var(--error-container)', border: '1px solid rgba(239,68,68,0.5)', color: 'var(--error)', cursor: 'pointer', fontWeight: 600 }}
+                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600 }}
                         >
                           {deletingId === exp.id ? '...' : 'Yes'}
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(null)}
-                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'var(--surface-low)', border: '0.5px solid var(--border-subtle)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer' }}
                         >
                           No
                         </button>
@@ -566,15 +566,15 @@ const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
                         style={{
                           padding: '4px 6px', borderRadius: '5px',
                           border: '1px solid rgba(239,68,68,0.3)',
-                          background: 'var(--error-container)',
-                          color: exp.status === 'running' ? 'var(--text-secondary)' : 'var(--error)',
+                          background: 'rgba(239,68,68,0.08)',
+                          color: exp.status === 'running' ? 'var(--text-secondary)' : '#f87171',
                           cursor: exp.status === 'running' ? 'not-allowed' : 'pointer',
                           display: 'flex', alignItems: 'center',
                           opacity: exp.status === 'running' ? 0.4 : 1,
                           transition: 'background 0.2s',
                         }}
-                        onMouseEnter={e => { if (exp.status !== 'running') e.currentTarget.style.background = 'var(--error-container)'; }}
-                        onMouseLeave={e => e.currentTarget.style.background = 'var(--error-container)'}
+                        onMouseEnter={e => { if (exp.status !== 'running') e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
                       >
                         <Trash2 size={12} />
                       </button>

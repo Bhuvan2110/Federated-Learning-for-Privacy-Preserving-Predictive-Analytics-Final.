@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Shield, Mail, Lock, ChevronRight, AlertCircle } from 'lucide-react';
+import { apiFetch } from '../utils/apiFetch';
 
-import { apiFetch, API_BASE } from '../utils/apiFetch';
-
-// Replace with your actual Google OAuth Client ID
-// You can get one from https://console.cloud.google.com/
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
 
 const Login = () => {
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -26,276 +24,177 @@ const Login = () => {
     navigate('/dashboard');
   };
 
-  // Initialize Google Sign-In
   useEffect(() => {
     const initGoogle = () => {
-      if (!window.google || !GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') return;
+      if (!window.google || GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') return;
       try {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleCredential,
-          ux_mode: 'popup',
-          auto_select: false,
-        });
+        window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential, ux_mode: 'popup' });
         if (googleBtnRef.current) {
-          window.google.accounts.id.renderButton(googleBtnRef.current, {
-            theme: 'filled_black',
-            size: 'large',
-            width: 340,
-            logo_alignment: 'left',
-            text: 'continue_with',
-          });
+          window.google.accounts.id.renderButton(googleBtnRef.current, { theme: 'outline', size: 'large', width: 340 });
         }
-      } catch (e) {
-        console.warn('Google Sign-In init failed:', e);
-      }
+      } catch(e) { console.warn('GSI init failed', e); }
     };
-
-    // Wait for the GSI script to load
-    if (window.google) {
-      initGoogle();
-    } else {
-      const interval = setInterval(() => {
-        if (window.google) { initGoogle(); clearInterval(interval); }
-      }, 300);
-      return () => clearInterval(interval);
-    }
+    if (window.google) initGoogle();
+    else { const t = setInterval(()=>{ if(window.google){initGoogle();clearInterval(t);} },300); return ()=>clearInterval(t); }
   }, [mode]);
 
   const handleGoogleCredential = async (response) => {
-    setGoogleLoading(true);
-    setError('');
+    setGoogleLoading(true); setError('');
     try {
-      // Decode the JWT credential to get user info (safe for frontend use)
       const parts = response.credential.split('.');
-      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/,'/')));
       const { email, sub: google_id, name } = payload;
-
-      const res = await apiFetch(`/api/auth/google-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, google_id, name }),
-      });
+      const res = await apiFetch('/api/auth/google-login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email,google_id,name}) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Google login failed');
       saveAndNavigate(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setGoogleLoading(false);
-    }
+    } catch(err) { setError(err.message); }
+    finally { setGoogleLoading(false); }
   };
 
-  const reset = (newMode) => {
-    setMode(newMode);
-    setError('');
-    setSuccess('');
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-  };
+  const reset = (m) => { setMode(m); setError(''); setSuccess(''); setEmail(''); setPassword(''); setConfirmPassword(''); };
 
-  const fetchWithTimeout = (fetchPromise, ms = 15000) => {
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Server is taking too long to respond. Please try again.')), ms)
-    );
-    return Promise.race([fetchPromise, timeout]);
-  };
+  const withTimeout = (p, ms=15000) => Promise.race([p, new Promise((_,r)=>setTimeout(()=>r(new Error('Server timeout. Please try again.')),ms))]);
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const res = await fetchWithTimeout(
-        apiFetch(`/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        })
-      );
+      if (mode === 'register') {
+        if (password !== confirmPassword) throw new Error('Passwords do not match');
+        if (password.length < 8) throw new Error('Password must be at least 8 characters');
+      }
+      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const res = await withTimeout(apiFetch(endpoint, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email, password }),
+      }));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Login failed');
+      if (!res.ok) throw new Error(data.detail || 'Authentication failed');
       saveAndNavigate(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch(err) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetchWithTimeout(
-        apiFetch(`/api/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        })
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Registration failed');
-      saveAndNavigate(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const seedAdmin = () => {
-    setEmail('sbhuvan847@gmail.com');
-    setPassword('SuperAdmin123!');
-    setError('');
-  };
-
-  const isLogin = mode === 'login';
   const googleConfigured = GOOGLE_CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+  const isLogin = mode === 'login';
 
   return (
     <div style={{
       minHeight: '100vh',
+      background: 'var(--background)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '20px',
-      background: 'radial-gradient(ellipse at top, #1e293b 0%, #0f172a 70%)',
+      padding: 'var(--s4)',
     }}>
-      <div className="glass animate-fade-in" style={{
-        width: '100%',
-        maxWidth: '420px',
-        padding: '40px',
-        position: 'relative',
-        overflow: 'hidden',
+      {/* Left panel — branding (hidden on mobile) */}
+      <div className="hide-mobile" style={{
+        width: '360px',
+        padding: '48px 40px',
+        marginRight: '40px',
       }}>
-        {/* Mode toggle tabs */}
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'32px' }}>
+          <div style={{ width:'40px', height:'40px', borderRadius:'var(--r-md)', background:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Shield size={20} color="white" />
+          </div>
+          <span style={{ font:'var(--text-headline-lg)', color:'var(--primary)' }}>FedLearn OS</span>
+        </div>
+        <h1 style={{ font:'600 28px/36px var(--font-sans)', color:'var(--text-primary)', letterSpacing:'-0.02em', marginBottom:'16px' }}>
+          Privacy-preserving<br/>machine learning
+        </h1>
+        <p style={{ font:'var(--text-body-md)', color:'var(--text-secondary)', lineHeight:'1.6', marginBottom:'32px' }}>
+          Train federated models across distributed clients without centralising sensitive data. 
+          Full differential privacy, end-to-end encryption, and role-based access control.
+        </p>
+        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+          {[
+            { color:'#E6F1FB', text:'#0C447C', label:'FedAvg · FedProx · SCAFFOLD' },
+            { color:'#EEEDFE', text:'#3C3489', label:'AES-256-GCM · RSA-2048 · SecAgg' },
+            { color:'#E1F5EE', text:'#085041', label:'Differential Privacy (DP-SGD)' },
+          ].map(p => (
+            <div key={p.label} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ width:'8px', height:'8px', borderRadius:'2px', background:p.color, border:`1px solid ${p.text}40`, flexShrink:0 }}></div>
+              <span style={{ font:'var(--text-label-sm)', color:'var(--text-secondary)' }}>{p.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Right panel — auth form */}
+      <div style={{
+        width: '100%',
+        maxWidth: '400px',
+        background: 'var(--bg-card)',
+        border: '0.5px solid var(--border-subtle)',
+        borderRadius: 'var(--r-lg)',
+        padding: '32px',
+        boxShadow: 'var(--shadow-lifted)',
+      }} className="animate-fade-in">
+
+        {/* Mode tabs */}
         <div style={{
-          display: 'flex',
-          background: 'rgba(0,0,0,0.3)',
-          borderRadius: '10px',
-          padding: '4px',
-          marginBottom: '32px',
-          gap: '4px',
+          display:'flex', background:'var(--surface-high)', borderRadius:'var(--r)',
+          padding:'3px', marginBottom:'28px', gap:'3px',
         }}>
-          <button
-            onClick={() => reset('login')}
-            style={{
-              flex: 1, padding: '10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-              fontWeight: 600, fontSize: '14px', transition: 'all 0.25s ease',
-              background: isLogin ? 'var(--accent-primary)' : 'transparent',
-              color: isLogin ? 'white' : 'var(--text-secondary)',
-              boxShadow: isLogin ? '0 2px 8px rgba(59,130,246,0.4)' : 'none',
-            }}
-          >
-            Sign In
-          </button>
-          <button
-            onClick={() => reset('register')}
-            style={{
-              flex: 1, padding: '10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-              fontWeight: 600, fontSize: '14px', transition: 'all 0.25s ease',
-              background: !isLogin ? 'var(--accent-primary)' : 'transparent',
-              color: !isLogin ? 'white' : 'var(--text-secondary)',
-              boxShadow: !isLogin ? '0 2px 8px rgba(59,130,246,0.4)' : 'none',
-            }}
-          >
-            Register
-          </button>
+          {['login','register'].map(m => (
+            <button key={m} onClick={()=>reset(m)} style={{
+              flex:1, padding:'7px', borderRadius:'var(--r-sm)', border:'none', cursor:'pointer',
+              font:'var(--text-label-sm)', transition:'all 0.15s',
+              background: mode===m ? 'var(--bg-card)' : 'transparent',
+              color: mode===m ? 'var(--text-primary)' : 'var(--text-muted)',
+              boxShadow: mode===m ? 'var(--shadow-lifted)' : 'none',
+              fontWeight: mode===m ? 600 : 400,
+            }}>
+              {m === 'login' ? 'Sign In' : 'Register'}
+            </button>
+          ))}
         </div>
 
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <h1 className="text-gradient" style={{ fontSize: '26px', marginBottom: '6px' }}>
-            {isLogin ? 'Welcome Back' : 'Create Account'}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            {isLogin ? 'Sign in to the Federated Learning Platform' : 'Join the Federated Learning Platform'}
+        <div style={{ marginBottom:'24px' }}>
+          <h2 style={{ font:'var(--text-headline-lg)', color:'var(--text-primary)', marginBottom:'4px' }}>
+            {isLogin ? 'Welcome back' : 'Create account'}
+          </h2>
+          <p style={{ font:'var(--text-body-md)', color:'var(--text-secondary)' }}>
+            {isLogin ? 'Sign in to the FL Platform' : 'Join the FL Platform'}
           </p>
         </div>
 
-        {/* Error / success banners */}
+        {/* Alerts */}
         {error && (
-          <div style={{
-            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-            borderRadius: '8px', padding: '10px 14px', marginBottom: '16px',
-            color: '#f87171', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <span>⚠</span> {error}
-            <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}>✕</button>
+          <div className="alert alert-error">
+            <AlertCircle size={14} style={{flexShrink:0,marginTop:'1px'}}/>
+            <span>{error}</span>
+            <button className="alert-dismiss" onClick={()=>setError('')}>✕</button>
           </div>
         )}
         {success && (
-          <div style={{
-            background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)',
-            borderRadius: '8px', padding: '10px 14px', marginBottom: '16px',
-            color: '#34d399', fontSize: '13px',
-          }}>
-            ✔ {success}
-          </div>
+          <div className="alert alert-success">{success}</div>
         )}
 
-        {/* Google Sign-In Button */}
+        {/* Google button */}
         {googleConfigured ? (
-          <div style={{ marginBottom: '20px' }}>
-            <div
-              ref={googleBtnRef}
-              style={{ display: 'flex', justifyContent: 'center' }}
-            />
-            {googleLoading && (
-              <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', marginTop: '8px' }}>
-                Authenticating with Google...
-              </p>
-            )}
+          <div style={{ marginBottom:'20px' }}>
+            <div ref={googleBtnRef} style={{ display:'flex', justifyContent:'center' }}/>
+            {googleLoading && <p style={{textAlign:'center',font:'var(--text-label-sm)',color:'var(--text-muted)',marginTop:'8px'}}>Authenticating…</p>}
           </div>
         ) : (
-          // Mock Google login for development/testing when Client ID is not configured
           <button
             type="button"
             onClick={async () => {
-              setGoogleLoading(true);
-              setError('');
+              setGoogleLoading(true); setError('');
               try {
-                const mockRes = await apiFetch(`/api/auth/google-login`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    email: 'sbhuvan847@gmail.com', // Log in as admin or default user
-                    google_id: 'mock_google_id_123',
-                    name: 'Super Admin (Google)'
-                  }),
-                });
-                const mockData = await mockRes.json();
-                if (!mockRes.ok) throw new Error(mockData.detail || 'Google login failed');
-                saveAndNavigate(mockData);
-              } catch (err) {
-                setError(err.message);
-              } finally {
-                setGoogleLoading(false);
-              }
+                const res = await apiFetch('/api/auth/google-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'sbhuvan847@gmail.com',google_id:'mock_google_id_123',name:'Super Admin'})});
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail||'Google login failed');
+                saveAndNavigate(data);
+              } catch(err){ setError(err.message); }
+              finally{ setGoogleLoading(false); }
             }}
-            style={{
-              width: '100%', padding: '11px', borderRadius: '8px', marginBottom: '20px',
-              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)',
-              color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px', fontWeight: 500,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.09)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+            className="btn btn-secondary"
+            style={{ width:'100%', marginBottom:'var(--s4)', justifyContent:'center', padding:'9px' }}
           >
-            {/* Google "G" logo SVG */}
-            <svg width="18" height="18" viewBox="0 0 48 48">
+            <svg width="16" height="16" viewBox="0 0 48 48">
               <path fill="#FFC107" d="M43.6 20.2H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.8 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.8z"/>
               <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 16 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.8 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
               <path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.5-5l-6.2-5.2C29.4 35.5 26.8 36 24 36c-5.2 0-9.7-3.3-11.3-8l-6.5 5C9.7 39.6 16.3 44 24 44z"/>
@@ -306,73 +205,69 @@ const Login = () => {
         )}
 
         {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
-          <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>or continue with email</span>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+        <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'var(--s4)' }}>
+          <div style={{ flex:1, height:'0.5px', background:'var(--border-subtle)' }}/>
+          <span style={{ font:'var(--text-micro)', color:'var(--text-muted)', letterSpacing:'0.08em', textTransform:'uppercase' }}>or email</span>
+          <div style={{ flex:1, height:'0.5px', background:'var(--border-subtle)' }}/>
         </div>
 
-        {/* Email/Password Form */}
-        <form onSubmit={isLogin ? handleLogin : handleRegister} style={{ display: 'flex', flexDirection: 'column' }}>
-          <input
-            type="email"
-            placeholder="Email Address"
-            className="input-field"
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); setError(''); }}
-            required
-            autoComplete="email"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            className="input-field"
-            value={password}
-            onChange={(e) => { setPassword(e.target.value); setError(''); }}
-            required
-            autoComplete={isLogin ? 'current-password' : 'new-password'}
-          />
-          {!isLogin && (
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          <label className="field-label" htmlFor="email">Email address</label>
+          <div style={{ position:'relative', marginBottom:'var(--s4)' }}>
+            <Mail size={14} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', pointerEvents:'none' }}/>
             <input
-              type="password"
-              placeholder="Confirm Password"
+              id="email" type="email" placeholder="you@example.com"
+              style={{ paddingLeft:'32px', marginBottom:0 }}
               className="input-field"
-              value={confirmPassword}
-              onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
-              required
-              autoComplete="new-password"
+              value={email} onChange={e=>{setEmail(e.target.value);setError('');}}
+              required autoComplete="email"
             />
+          </div>
+
+          <label className="field-label" htmlFor="password">Password</label>
+          <div style={{ position:'relative', marginBottom: isLogin ? 'var(--s4)' : 'var(--s4)' }}>
+            <Lock size={14} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', pointerEvents:'none' }}/>
+            <input
+              id="password" type="password" placeholder="••••••••"
+              style={{ paddingLeft:'32px', marginBottom:0 }}
+              className="input-field"
+              value={password} onChange={e=>{setPassword(e.target.value);setError('');}}
+              required autoComplete={isLogin?'current-password':'new-password'}
+            />
+          </div>
+
+          {!isLogin && (
+            <>
+              <label className="field-label">Confirm password</label>
+              <div style={{ position:'relative', marginBottom:'var(--s4)' }}>
+                <Lock size={14} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', pointerEvents:'none' }}/>
+                <input
+                  type="password" placeholder="••••••••"
+                  style={{ paddingLeft:'32px', marginBottom:0 }}
+                  className="input-field"
+                  value={confirmPassword} onChange={e=>{setConfirmPassword(e.target.value);setError('');}}
+                  required autoComplete="new-password"
+                />
+              </div>
+            </>
           )}
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%', marginTop: '8px', padding: '12px', fontSize: '15px', letterSpacing: '0.02em' }}
-            disabled={loading}
-          >
-            {loading
-              ? (isLogin ? 'Signing In...' : 'Creating Account...')
-              : (isLogin ? 'Sign In' : 'Create Account')}
+          <button type="submit" className="btn btn-primary" style={{ width:'100%', padding:'9px', justifyContent:'center', gap:'6px' }} disabled={loading}>
+            {loading ? (isLogin?'Signing in…':'Creating account…') : (isLogin?'Sign in':'Create account')}
+            {!loading && <ChevronRight size={14}/>}
           </button>
         </form>
 
-        {/* Footer links */}
-        <div style={{ marginTop: '20px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            {isLogin ? "Don't have an account? " : 'Already have an account? '}
-            <button
-              onClick={() => reset(isLogin ? 'register' : 'login')}
-              style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, padding: 0 }}
-            >
-              {isLogin ? 'Register' : 'Sign In'}
+        <div style={{ marginTop:'var(--s4)', textAlign:'center', display:'flex', flexDirection:'column', gap:'8px' }}>
+          <span style={{ font:'var(--text-label-sm)', color:'var(--text-secondary)' }}>
+            {isLogin?"Don't have an account? ":"Already have an account? "}
+            <button onClick={()=>reset(isLogin?'register':'login')} style={{ background:'none', border:'none', color:'var(--primary)', cursor:'pointer', font:'var(--text-label-sm)', fontWeight:600, padding:0 }}>
+              {isLogin?'Register':'Sign in'}
             </button>
           </span>
-
           {isLogin && (
-            <button
-              onClick={seedAdmin}
-              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}
-            >
+            <button onClick={()=>{setEmail('sbhuvan847@gmail.com');setPassword('SuperAdmin123!');setError('');}} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',font:'var(--text-data)',textDecoration:'underline' }}>
               Auto-fill Super Admin
             </button>
           )}

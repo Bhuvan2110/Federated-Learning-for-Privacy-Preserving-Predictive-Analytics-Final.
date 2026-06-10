@@ -247,9 +247,9 @@ const Predict = () => {
     const baseStyle = {
       width: '100%',
       padding: '9px 12px',
-      borderRadius: 'var(--r)',
-      border: '0.5px solid var(--border-subtle)',
-      background: 'var(--surface-low)',
+      borderRadius: '8px',
+      border: '1px solid var(--border-color)',
+      background: 'var(--bg-secondary)',
       color: 'var(--text-primary)',
       fontSize: '13px',
       outline: 'none',
@@ -276,11 +276,8 @@ const Predict = () => {
     }
 
     if (cfg.type === 'number') {
-      // Only spread min/max when explicitly configured — passing undefined
-      // causes some browsers to silently restrict to 0+, blocking negatives.
-      const rangeProps = {};
-      if (cfg.min !== undefined) rangeProps.min = cfg.min;
-      if (cfg.max !== undefined) rangeProps.max = cfg.max;
+      // Do not enforce min/max as hard HTML inputs to allow testing
+      // the ML models with abnormal/adversarial values (like negative age).
       return (
         <input
           type="number"
@@ -288,14 +285,13 @@ const Predict = () => {
           style={{ ...baseStyle, marginBottom: 0 }}
           placeholder={
             cfg.min !== undefined && cfg.max !== undefined
-              ? `${cfg.min} – ${cfg.max}`
+              ? `Typical: ${cfg.min} – ${cfg.max}`
               : 'Numeric value'
           }
           value={value}
           onChange={onChange}
           required
           step={cfg.step ?? 'any'}
-          {...rangeProps}
           title={cfg.hint || ''}
         />
       );
@@ -318,24 +314,24 @@ const Predict = () => {
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        <Sparkles size={28} color="var(--primary)" />
+        <Sparkles size={28} color="var(--accent-primary)" />
         <h1 style={{ fontSize: 'clamp(18px, 4vw, 28px)', fontWeight: 'bold', margin: 0 }} className="text-gradient">
           Interactive Inference &amp; Prediction
         </h1>
       </div>
 
       {/* ── Step 1: Dataset + Model selection ─────────────────────────── */}
-      <div className="card" style={{ padding: '24px', marginBottom: '24px' }}>
+      <div className="glass" style={{ padding: '24px', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Database size={18} color="var(--primary)" />
+          <Database size={18} color="var(--accent-primary)" />
           1. Select Dataset &amp; Trained Model
         </h2>
 
         {loadingDatasets ? (
           <p style={{ color: 'var(--text-secondary)' }}>Loading datasets…</p>
         ) : datasets.length === 0 ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: 'rgba(239,68,68,0.05)', border: '1px solid var(--error-container)', borderRadius: 'var(--r)' }}>
-            <AlertCircle color="var(--error)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px' }}>
+            <AlertCircle color="var(--danger)" />
             <span style={{ color: 'var(--text-secondary)' }}>
               No datasets found. Upload a CSV on the <strong>Datasets</strong> page first.
             </span>
@@ -379,8 +375,8 @@ const Predict = () => {
       {selectedDatasetId && columns.length > 0 && (
         <div className="animate-fade-in">
           {matchingModels.length === 0 ? (
-            <div className="card" style={{ padding: '24px', textAlign: 'center' }}>
-              <AlertCircle size={32} color="var(--error)" style={{ marginBottom: '12px' }} />
+            <div className="glass" style={{ padding: '24px', textAlign: 'center' }}>
+              <AlertCircle size={32} color="var(--danger)" style={{ marginBottom: '12px' }} />
               <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>No Trained Models Found</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
                 Run a federated training job for <strong>{datasets.find(d => d.id === parseInt(selectedDatasetId))?.filename}</strong> first.
@@ -390,13 +386,13 @@ const Predict = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', alignItems: 'start' }}>
 
               {/* ── Single Prediction ──────────────────────────────────── */}
-              <div className="card" style={{ padding: '24px' }}>
+              <div className="glass" style={{ padding: '24px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Settings size={18} color="var(--primary)" />
+                  <Settings size={18} color="var(--accent-primary)" />
                   Option A: Single Prediction
                 </h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-                  Fill in feature values below to predict <strong style={{ color: 'var(--primary)' }}>{targetColumn}</strong>.
+                  Fill in feature values below to predict <strong style={{ color: 'var(--accent-primary)' }}>{targetColumn}</strong>.
                   Dropdowns appear for categorical fields; numeric inputs for continuous values.
                 </p>
 
@@ -432,7 +428,7 @@ const Predict = () => {
                   </div>
 
                   {singleError && (
-                    <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--r)', color: 'var(--error)', fontSize: '13px', marginBottom: '16px' }}>
+                    <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>
                       ⚠ {singleError}
                     </div>
                   )}
@@ -444,13 +440,13 @@ const Predict = () => {
                 </form>
 
                 {singleResult && (
-                  <div className="animate-fade-in" style={{ marginTop: '20px', padding: '20px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 'var(--r-md)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#085041', fontWeight: 600, fontSize: '15px', marginBottom: '14px' }}>
+                  <div className="animate-fade-in" style={{ marginTop: '20px', padding: '20px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--success)', fontWeight: 600, fontSize: '15px', marginBottom: '14px' }}>
                       <CheckCircle size={18} /> Prediction Ready
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Target Variable:</span>
-                      <span style={{ fontWeight: '600', color: 'var(--primary)' }}>{targetColumn}</span>
+                      <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{targetColumn}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '14px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Predicted Output Class:</span>
@@ -467,15 +463,15 @@ const Predict = () => {
               </div>
 
               {/* ── Batch Prediction ───────────────────────────────────── */}
-              <div className="card" style={{ padding: '24px' }}>
+              <div className="glass" style={{ padding: '24px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText size={18} color="var(--primary)" />
+                  <FileText size={18} color="var(--accent-primary)" />
                   Option B: Batch Prediction (CSV)
                 </h3>
 
-                <div style={{ padding: '12px 14px', background: 'rgba(59,130,246,0.05)', border: '1px solid var(--primary-fixed)', borderRadius: 'var(--r)', marginBottom: '16px', fontSize: '12px' }}>
-                  <p style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: '4px' }}>Expected CSV column order:</p>
-                  <code style={{ display: 'block', background: 'var(--surface-high)', padding: '8px', borderRadius: '6px', wordBreak: 'break-all', fontFamily: 'monospace', color: '#60a5fa' }}>
+                <div style={{ padding: '12px 14px', background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
+                  <p style={{ fontWeight: 600, color: 'var(--accent-primary)', marginBottom: '4px' }}>Expected CSV column order:</p>
+                  <code style={{ display: 'block', background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', wordBreak: 'break-all', fontFamily: 'monospace', color: '#60a5fa' }}>
                     {featureCols.join(', ')}
                   </code>
                   <p style={{ color: 'var(--text-secondary)', marginTop: '6px', marginBottom: 0 }}>
@@ -486,9 +482,9 @@ const Predict = () => {
                 <form onSubmit={handleBatchPredict}>
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    style={{ padding: '30px 16px', textAlign: 'center', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--r-md)', cursor: 'pointer', background: 'rgba(255,255,255,0.01)', marginBottom: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', transition: 'border-color 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
+                    style={{ padding: '30px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: '12px', cursor: 'pointer', background: 'rgba(255,255,255,0.01)', marginBottom: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', transition: 'border-color 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
                   >
                     <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => setBatchFile(e.target.files[0] || null)} />
                     <UploadCloud size={32} color="var(--text-secondary)" />
@@ -499,7 +495,7 @@ const Predict = () => {
                   </div>
 
                   {batchError && (
-                    <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--r)', color: 'var(--error)', fontSize: '13px', marginBottom: '16px' }}>
+                    <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>
                       {batchError}
                     </div>
                   )}
@@ -511,14 +507,14 @@ const Predict = () => {
                 </form>
 
                 {batchResults && (
-                  <div className="animate-fade-in" style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '0.5px solid var(--border-subtle)', borderRadius: 'var(--r-md)', maxHeight: '280px', overflowY: 'auto' }}>
+                  <div className="animate-fade-in" style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', maxHeight: '280px', overflowY: 'auto' }}>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
                       <span>Batch Results ({batchResults.length} rows)</span>
-                      <span style={{ color: '#085041' }}>✔ Done</span>
+                      <span style={{ color: 'var(--success)' }}>✔ Done</span>
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
-                        <tr style={{ borderBottom: '0.5px solid var(--border-subtle)' }}>
+                        <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Row</th>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Class</th>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Confidence</th>
@@ -529,7 +525,7 @@ const Predict = () => {
                           <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
                             <td style={{ padding: '8px' }}>#{r.row}</td>
                             <td style={{ padding: '8px', fontWeight: '600' }}>
-                              {r.error ? <span style={{ color: 'var(--error)' }}>Error</span> : r.class}
+                              {r.error ? <span style={{ color: 'var(--danger)' }}>Error</span> : r.class}
                             </td>
                             <td style={{ padding: '8px' }}>
                               {r.error
@@ -558,7 +554,7 @@ const labelStyle = {
   color: 'var(--text-secondary)', fontSize: '13px', fontWeight: '500',
 };
 const selectStyle = {
-  background: 'var(--surface-low)', marginBottom: 0,
+  background: 'var(--bg-secondary)', marginBottom: 0,
 };
 
 export default Predict;
