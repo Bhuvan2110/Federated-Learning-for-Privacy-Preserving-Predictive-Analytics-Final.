@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Database, Activity, Target, LogOut, Menu, X, Shield } from 'lucide-react';
+import { LayoutDashboard, Database, Activity, Target, LogOut, Menu, X, Shield, GitCompare } from 'lucide-react';
 
 const Sidebar = () => {
   const navigate = useNavigate();
@@ -37,6 +37,7 @@ const Sidebar = () => {
     { name: 'Datasets',  icon: <Database size={16} />,        path: '/datasets'  },
     { name: 'Training',  icon: <Activity size={16} />,        path: '/training'  },
     { name: 'Prediction',icon: <Target size={16} />,          path: '/predict'   },
+    { name: 'Compare',   icon: <GitCompare size={16} />,      path: '/compare'   },
   ];
 
   const SidebarContent = () => (

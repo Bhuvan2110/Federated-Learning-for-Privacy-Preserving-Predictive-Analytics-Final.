@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Datasets from './pages/Datasets';
 import Training from './pages/Training';
 import Predict from './pages/Predict';
+import Comparison from './pages/Comparison';
 import Sidebar from './components/Sidebar';
 
 /* ── Topbar ──────────────────────────────────────────────────────────────────── */
@@ -13,6 +14,7 @@ const ROUTE_LABELS = {
   '/datasets':  'Dataset Management',
   '/training':  'Training Monitor',
   '/predict':   'Prediction Engine',
+  '/compare':   'Model Comparison',
 };
 
 const Topbar = () => {
@@ -78,6 +80,7 @@ function App() {
                 <Route path="/datasets"  element={<Datasets />} />
                 <Route path="/training"  element={<Training />} />
                 <Route path="/predict"   element={<Predict />} />
+                <Route path="/compare"   element={<Comparison />} />
               </Routes>
             </Layout>
           </PrivateRoute>
