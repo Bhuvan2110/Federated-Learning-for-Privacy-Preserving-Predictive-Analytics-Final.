@@ -22,8 +22,7 @@ jobs:
       - name: Run Pytest
         run: |
           cd backend
-          pytest tests/
-          
+          python -m pytest tests/ --pythonpath=.
   build:
     needs: test
     runs-on: ubuntu-latest
