@@ -96,9 +96,10 @@ def compare_experiment_detail(
             loss_curve.append(float(mw.metrics_json.get("loss", 0.0)))
             acc_curve.append(float(mw.metrics_json.get("accuracy", 0.0)))
         if mw == model_weights[-1]:
-            final_metrics = dict(mw.metrics_json) if mw.metrics_json else {}
-            wj = mw.weights_json or {}
-            feature_weights = [float(w) for w in wj.get("weights", [])]
+            raw_metrics = mw.metrics_json
+            final_metrics = {str(k): v for k, v in raw_metrics.items()} if isinstance(raw_metrics, dict) else {}
+            raw_wj: dict[str, Any] = mw.weights_json if isinstance(mw.weights_json, dict) else {}
+            feature_weights = [float(w) for w in raw_wj.get("weights", [])]
 
     # ── Confusion matrix approximation ──────────────────────────────────────
     accuracy: float = float(final_metrics.get("accuracy", 0.0))
@@ -124,7 +125,8 @@ def compare_experiment_detail(
 
     # ── Feature importance ───────────────────────────────────────────────────
     feature_names: list[str] = []
-    config: dict[str, Any] = dict(experiment.config_json) if experiment.config_json else {}
+    raw_config = experiment.config_json
+    config: dict[str, Any] = {str(k): v for k, v in raw_config.items()} if isinstance(raw_config, dict) else {}
     dataset_id = config.get("dataset_id")
     if dataset_id:
         dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
