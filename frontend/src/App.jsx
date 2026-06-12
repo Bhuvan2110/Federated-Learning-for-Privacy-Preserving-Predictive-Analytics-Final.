@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabaseClient'
-import { setAuthToken, wakeBackend } from './utils/apiFetch'
+import { setAuthToken, wakeBackend, startKeepAlive, stopKeepAlive } from './utils/apiFetch'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -51,6 +51,16 @@ export default function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Start/stop keep-alive based on auth state
+  useEffect(() => {
+    if (user) {
+      startKeepAlive()
+    } else {
+      stopKeepAlive()
+    }
+    return () => stopKeepAlive()
+  }, [user])
 
   const handleLogin = (userData) => { setUser(userData) }
 

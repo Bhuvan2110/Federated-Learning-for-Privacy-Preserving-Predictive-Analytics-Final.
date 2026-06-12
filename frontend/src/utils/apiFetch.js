@@ -10,76 +10,106 @@ export function getAuthToken() {
   return _token
 }
 
-// Ping the backend to wake it from Render free-tier sleep
+// Ping /health to wake Render free-tier from sleep
 export async function wakeBackend() {
   try {
-    await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60000) })
+    await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(65000) })
   } catch (_) {
-    // ignore — we just want to wake it
+    // silently ignore — just a warm-up call
   }
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+// Keep backend alive while the app tab is open (ping every 10 minutes)
+let _keepAliveTimer = null
+export function startKeepAlive() {
+  if (_keepAliveTimer) return
+  _keepAliveTimer = setInterval(() => {
+    fetch(`${API_BASE}/health`).catch(() => {})
+  }, 10 * 60 * 1000) // 10 minutes
+}
+export function stopKeepAlive() {
+  if (_keepAliveTimer) {
+    clearInterval(_keepAliveTimer)
+    _keepAliveTimer = null
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 65000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await fetch(url, { ...options, signal: controller.signal })
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error('Request timed out — backend may be waking up, please retry in a moment')
+      throw new Error('timeout')
     }
-    // TypeError: Failed to fetch  →  nicer message
-    throw new Error('Cannot reach server — check your connection or wait for the backend to wake up')
+    throw new Error('network')
   } finally {
     clearTimeout(timer)
   }
 }
 
-export async function apiFetch(path, options = {}, retries = 1) {
+// Retry up to `maxRetries` times, waiting `delayMs` between attempts
+export async function apiFetch(path, options = {}, maxRetries = 3, delayMs = 10000) {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   }
   if (_token) headers['Authorization'] = `Bearer ${_token}`
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  let lastErr
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetchWithTimeout(`${API_BASE}${path}`, { ...options, headers })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }))
-        throw new Error(err.detail || `API error ${res.status}`)
+        const body = await res.json().catch(() => ({ detail: res.statusText }))
+        throw new Error(body.detail || `API error ${res.status}`)
       }
       return await res.json()
     } catch (err) {
-      // On the last attempt, or if it's an API error (not a network error), throw
-      const isNetworkError = err.message.includes('waking') || err.message.includes('Cannot reach')
-      if (attempt === retries || !isNetworkError) throw err
-      // Wait 3s then retry (gives backend time to wake)
-      await new Promise(r => setTimeout(r, 3000))
+      lastErr = err
+      // Only retry on network/timeout errors, not API errors (4xx/5xx)
+      const isNetworkErr = err.message === 'timeout' || err.message === 'network'
+      if (!isNetworkErr || attempt === maxRetries) break
+      // Wait before retrying
+      await new Promise(r => setTimeout(r, delayMs))
     }
   }
+
+  // Map internal codes to user-friendly messages
+  if (lastErr.message === 'timeout' || lastErr.message === 'network') {
+    throw new Error('Cannot reach server — the backend may be waking up. Please retry in a moment.')
+  }
+  throw lastErr
 }
 
-export async function apiUpload(path, formData, retries = 1) {
+export async function apiUpload(path, formData, maxRetries = 3, delayMs = 10000) {
   const headers = {}
   if (_token) headers['Authorization'] = `Bearer ${_token}`
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  let lastErr
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetchWithTimeout(
         `${API_BASE}${path}`,
         { method: 'POST', headers, body: formData },
-        60000 // uploads can take longer
+        90000 // uploads can take longer
       )
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }))
-        throw new Error(err.detail || `Upload error ${res.status}`)
+        const body = await res.json().catch(() => ({ detail: res.statusText }))
+        throw new Error(body.detail || `Upload error ${res.status}`)
       }
       return await res.json()
     } catch (err) {
-      const isNetworkError = err.message.includes('waking') || err.message.includes('Cannot reach')
-      if (attempt === retries || !isNetworkError) throw err
-      await new Promise(r => setTimeout(r, 3000))
+      lastErr = err
+      const isNetworkErr = err.message === 'timeout' || err.message === 'network'
+      if (!isNetworkErr || attempt === maxRetries) break
+      await new Promise(r => setTimeout(r, delayMs))
     }
   }
+
+  if (lastErr.message === 'timeout' || lastErr.message === 'network') {
+    throw new Error('Cannot reach server — the backend may be waking up. Please retry in a moment.')
+  }
+  throw lastErr
 }

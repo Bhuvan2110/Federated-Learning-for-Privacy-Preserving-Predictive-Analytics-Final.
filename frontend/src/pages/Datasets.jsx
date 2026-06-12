@@ -29,6 +29,7 @@ export default function Datasets() {
 
   const loadDatasets = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const data = await apiFetch('/dataset/list')
       setDatasets(Array.isArray(data) ? data : [])
@@ -114,9 +115,16 @@ export default function Datasets() {
       </div>
 
       {error && (
-        <div className="glass-card p-4 mb-4 flex items-center gap-3 text-red-400 border border-red-500/30">
-          <AlertCircle size={15} />
-          <span className="text-sm">{error}</span>
+        <div className="glass-card p-4 mb-4 flex items-center justify-between gap-3 border border-red-500/30">
+          <div className="flex items-center gap-3 text-red-400 min-w-0">
+            <AlertCircle size={15} className="flex-shrink-0" />
+            <span className="text-sm truncate">
+              {error.includes('Cannot reach') || error.includes('waking')
+                ? '⏳ Backend is waking up from sleep — retrying automatically…'
+                : error}
+            </span>
+          </div>
+          <button onClick={loadDatasets} className="btn-secondary text-xs shrink-0 ml-2">Retry</button>
         </div>
       )}
 
