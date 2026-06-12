@@ -32,7 +32,7 @@ services:
   - type: web
     name: fl-platform-ui
     runtime: static
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && VITE_API_URL=https://fl-platform-api.onrender.com VITE_SUPABASE_URL=https://gxrnjyurzoegbhljkyda.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_lT0PKVxLMX84loUUarMeyw_Vzw5R93- npm run build
     staticPublishPath: dist
     rootDir: frontend
     headers:
