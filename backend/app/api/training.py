@@ -61,22 +61,6 @@ async def start_training(config: TrainingConfig, user: dict = Depends(get_curren
         raise HTTPException(status_code=500, detail=f"Failed to dispatch task: {str(e)}")
 
 
-@router.get("/{experiment_id}/status")
-async def get_training_status(experiment_id: str, user: dict = Depends(get_current_user)):
-    sb = get_supabase()
-    exp = sb.table("experiments").select("*").eq("id", experiment_id).single().execute()
-    if not exp.data:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-
-    # Get latest rounds
-    rounds = sb.table("rounds").select("*").eq("experiment_id", experiment_id).order("round_num").execute()
-    return {
-        "experiment": exp.data,
-        "rounds": rounds.data,
-        "latest_round": rounds.data[-1] if rounds.data else None,
-    }
-
-
 @router.get("/list")
 async def list_experiments(user: dict = Depends(get_current_user)):
     sb = get_supabase()
@@ -109,6 +93,22 @@ async def compare_experiments(user: dict = Depends(get_current_user)):
             })
 
     return results
+
+
+@router.get("/{experiment_id}/status")
+async def get_training_status(experiment_id: str, user: dict = Depends(get_current_user)):
+    sb = get_supabase()
+    exp = sb.table("experiments").select("*").eq("id", experiment_id).single().execute()
+    if not exp.data:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    # Get latest rounds
+    rounds = sb.table("rounds").select("*").eq("experiment_id", experiment_id).order("round_num").execute()
+    return {
+        "experiment": exp.data,
+        "rounds": rounds.data,
+        "latest_round": rounds.data[-1] if rounds.data else None,
+    }
 
 
 @router.delete("/{experiment_id}")
