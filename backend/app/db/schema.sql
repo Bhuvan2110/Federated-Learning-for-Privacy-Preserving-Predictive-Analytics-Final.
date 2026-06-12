@@ -211,3 +211,26 @@ create policy "Admins read audit logs"
 -- Enable Supabase Realtime on rounds table for live training charts
 alter publication supabase_realtime add table public.rounds;
 alter publication supabase_realtime add table public.experiments;
+
+-- ── Sync Trigger ───────────────────────────────────────────
+-- Sync auth.users to public.users on user creation
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.users (id, email, role)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_app_meta_data->>'role', new.raw_user_meta_data->>'role', 'user')
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      role = coalesce(excluded.role, public.users.role);
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
