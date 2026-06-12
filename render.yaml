@@ -77,3 +77,4 @@ services:
     name: fl-redis
     plan: free
     maxmemoryPolicy: noeviction
+    ipAllowList: []
