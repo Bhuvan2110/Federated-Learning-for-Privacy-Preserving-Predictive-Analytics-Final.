@@ -52,7 +52,7 @@ services:
           name: fl-redis
           property: connectionString
 
-  - type: static
+  - type: static_site
     name: fl-platform-ui
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
