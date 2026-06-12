@@ -1,137 +1,87 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Database, Activity, Target, LogOut, Menu, X, Shield, GitCompare } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom'
+import {
+  LayoutDashboard, Database, Brain, Zap, BarChart3,
+  Shield, LogOut, Lock, ChevronRight
+} from 'lucide-react'
 
-const Sidebar = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [userEmail, setUserEmail] = useState('');
-  const [role, setRole] = useState('');
-  const [open, setOpen] = useState(false);
+const NAV_ITEMS = [
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/datasets',  icon: Database,        label: 'Datasets'  },
+  { to: '/training',  icon: Brain,            label: 'Training'  },
+  { to: '/predict',   icon: Zap,              label: 'Predict'   },
+  { to: '/compare',   icon: BarChart3,        label: 'Compare'   },
+  { to: '/security',  icon: Shield,           label: 'Security'  },
+]
 
-  useEffect(() => { setOpen(false); }, [location.pathname]);
-  useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
-  useEffect(() => {
-    setUserEmail(localStorage.getItem('userEmail') || '');
-    setRole(localStorage.getItem('role') || 'user');
-    const handler = () => {
-      setUserEmail(localStorage.getItem('userEmail') || '');
-      setRole(localStorage.getItem('role') || 'user');
-    };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
-  }, []);
+export default function Sidebar({ user, onLogout }) {
+  const location = useLocation()
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userEmail');
-    navigate('/login');
-  };
-
-  const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={16} />, path: '/dashboard' },
-    { name: 'Datasets',  icon: <Database size={16} />,        path: '/datasets'  },
-    { name: 'Training',  icon: <Activity size={16} />,        path: '/training'  },
-    { name: 'Prediction',icon: <Target size={16} />,          path: '/predict'   },
-    { name: 'Compare',   icon: <GitCompare size={16} />,      path: '/compare'   },
-  ];
-
-  const SidebarContent = () => (
-    <>
-      {/* Brand */}
-      <div style={{ marginBottom: '28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h2 style={{ font: 'var(--text-headline-lg)', color: 'var(--on-primary)', letterSpacing: '-0.01em' }}>
-              FedLearn OS
-            </h2>
-            <p style={{ font: 'var(--text-data)', color: 'rgba(255,255,255,0.5)', marginTop: '3px', letterSpacing: '0' }}>
-              Federated Learning Platform
-            </p>
+  return (
+    <aside className="w-64 flex-shrink-0 flex flex-col bg-surface-800/80 backdrop-blur-md border-r border-white/10 h-screen sticky top-0">
+      {/* Logo */}
+      <div className="px-6 py-5 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center shadow-lg shadow-brand-900/50">
+            <Brain size={18} className="text-white" />
           </div>
-          <button
-            onClick={() => setOpen(false)}
-            className="close-sidebar-btn"
-            style={{ display:'none', background:'none', border:'none', color:'rgba(255,255,255,0.5)', cursor:'pointer', padding:'4px' }}
-          >
-            <X size={18} />
-          </button>
+          <div>
+            <p className="font-bold text-slate-100 leading-tight text-sm">FL Platform</p>
+            <p className="text-xs text-slate-500">Privacy-Preserving ML</p>
+          </div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav style={{ flex:1, display:'flex', flexDirection:'column', gap:'2px' }}>
-        {navItems.map(item => (
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
           <NavLink
-            key={item.name}
-            to={item.path}
-            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+               transition-all duration-200 group
+               ${isActive
+                 ? 'bg-brand-600/20 text-brand-400 border border-brand-500/30'
+                 : 'text-slate-400 hover:text-slate-100 hover:bg-white/5 border border-transparent'
+               }`
+            }
           >
-            {item.icon}
-            <span>{item.name}</span>
+            <Icon size={16} className="flex-shrink-0" />
+            <span>{label}</span>
+            <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-50 transition-opacity" />
           </NavLink>
         ))}
       </nav>
 
-      {/* User card */}
-      {userEmail && (
-        <div style={{
-          marginTop: 'auto',
-          padding: '10px 12px',
-          background: 'rgba(255,255,255,0.06)',
-          borderRadius: 'var(--r)',
-          border: '0.5px solid rgba(255,255,255,0.1)',
-          marginBottom: '8px',
-        }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-            <div style={{
-              width:'28px', height:'28px', borderRadius:'50%',
-              background: 'var(--primary-fixed)',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              fontSize:'12px', fontWeight:700, color:'var(--primary)', flexShrink:0,
-            }}>
-              {userEmail.charAt(0).toUpperCase()}
-            </div>
-            <div style={{ minWidth:0 }}>
-              <p style={{ font:'var(--text-label-sm)', color:'rgba(255,255,255,0.85)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {userEmail}
-              </p>
-              <p style={{ font:'var(--text-data)', color:'rgba(255,255,255,0.45)', marginTop:'1px', display:'flex', alignItems:'center', gap:'3px' }}>
-                <Shield size={9} />
-                {role}
-              </p>
-            </div>
-          </div>
+      {/* Encryption badge */}
+      <div className="px-4 py-3 mx-3 mb-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+        <div className="flex items-center gap-2">
+          <Lock size={12} className="text-emerald-400" />
+          <span className="text-xs text-emerald-400 font-medium">AES-256-GCM Active</span>
+          <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </div>
-      )}
+        <p className="text-xs text-emerald-600 mt-0.5">RSA-2048 key exchange</p>
+      </div>
 
-      <button
-        onClick={handleLogout}
-        className="nav-link"
-        style={{ color:'rgba(255,255,255,0.5)' }}
-      >
-        <LogOut size={16} />
-        <span>Logout</span>
-      </button>
-    </>
-  );
-
-  return (
-    <>
-      <button className="hamburger" onClick={() => setOpen(true)} aria-label="Open menu">
-        <Menu size={20} />
-      </button>
-      <div className={`sidebar-overlay${open ? ' open' : ''}`} onClick={() => setOpen(false)} />
-      <aside className={`sidebar${open ? ' open' : ''}`}>
-        <SidebarContent />
-      </aside>
-      <style>{`@media(max-width:640px){.close-sidebar-btn{display:flex!important}}`}</style>
-    </>
-  );
-};
-
-export default Sidebar;
+      {/* User */}
+      <div className="px-4 py-4 border-t border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+            {user?.email?.[0]?.toUpperCase() || 'U'}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-slate-200 truncate">{user?.email || 'User'}</p>
+            <p className="text-xs text-slate-500 capitalize">{user?.role || 'user'}</p>
+          </div>
+          <button
+            onClick={onLogout}
+            className="text-slate-500 hover:text-red-400 transition-colors"
+            title="Logout"
+          >
+            <LogOut size={15} />
+          </button>
+        </div>
+      </div>
+    </aside>
+  )
+}

@@ -1,34 +1,59 @@
-from fastapi import Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-import jwt
-from typing import Any
-from app.db.session import get_db
-from app.db.models import User
-from app.core.security import public_pem, ALGORITHM
+"""
+JWT dependency — verifies Supabase-issued JWT and extracts user + role.
+"""
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import httpx
+from app.core.config import get_settings
 
-def get_current_user(request: Request, db: Session = Depends(get_db)):
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid token")
-    
-    token = auth_header.split(" ")[1]
+bearer_scheme = HTTPBearer()
+settings = get_settings()
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> dict:
+    """Verify Supabase JWT and return user payload."""
+    token = credentials.credentials
     try:
-        payload = jwt.decode(token, public_pem, algorithms=[ALGORITHM])
-        _sub = payload.get("sub")
-        if _sub is None:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
-        user_id: str = str(_sub)
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
-        
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Validate token via Supabase REST API
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{settings.supabase_url}/auth/v1/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": settings.supabase_anon_key,
+                },
+                timeout=10,
+            )
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+        user_data = resp.json()
+        return {
+            "id": user_data.get("id"),
+            "email": user_data.get("email"),
+            "role": user_data.get("app_metadata", {}).get("role", "user"),
+            "token": token,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
-def require_role(roles: list):
-    def role_checker(current_user: User = Depends(get_current_user)):
-        if current_user.role not in roles:
-            raise HTTPException(status_code=403, detail="Not enough privileges")
-        return current_user
-    return role_checker
+
+def require_super_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin access required")
+    return user

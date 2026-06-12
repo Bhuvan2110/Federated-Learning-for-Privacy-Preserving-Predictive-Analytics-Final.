@@ -1,50 +1,41 @@
-/**
- * apiFetch — a thin wrapper around fetch() that:
- *  1. Prepends VITE_API_URL to all relative paths
- *  2. Automatically redirects to /login on 401 (expired/invalid token)
- *  3. Clears localStorage on logout
- */
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-export const API_BASE =
-  rawApiUrl && !/^https?:\/\//i.test(rawApiUrl) ? `https://${rawApiUrl}` : rawApiUrl;
+let _token = null
 
-function clearAuthAndRedirect() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('role');
-  localStorage.removeItem('userEmail');
-  // Only redirect if not already on the login page
-  if (!window.location.pathname.includes('/login')) {
-    window.location.href = '/login';
-  }
+export function setAuthToken(token) {
+  _token = token
+}
+
+export function getAuthToken() {
+  return _token
 }
 
 export async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem('token');
   const headers = {
+    'Content-Type': 'application/json',
     ...(options.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-
-  // On 401: if we're already on the login page (e.g., bad credentials) just
-  // return the response so the caller can show an error message.
-  // If we're on any other page, clear auth and redirect to login.
-  if (response.status === 401) {
-    if (window.location.pathname.includes('/login')) {
-      return response; // Let the login page handle it normally
-    }
-    clearAuthAndRedirect();
-    // Throw so any awaiting caller doesn't continue with a stale response
-    throw new Error('Session expired. Please log in again.');
   }
+  if (_token) headers['Authorization'] = `Bearer ${_token}`
 
-  return response;
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || `API error ${res.status}`)
+  }
+  return res.json()
 }
 
-/** Convenience: headers-only object (for multipart forms where you cannot set Content-Type) */
-export function authHeaders() {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+export async function apiUpload(path, formData) {
+  const headers = {}
+  if (_token) headers['Authorization'] = `Bearer ${_token}`
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || `Upload error ${res.status}`)
+  }
+  return res.json()
 }

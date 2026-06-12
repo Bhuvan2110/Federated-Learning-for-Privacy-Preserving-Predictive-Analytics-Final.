@@ -1,28 +1,36 @@
-import os
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from functools import lru_cache
 
-_SQLITE_FALLBACK = "sqlite:////tmp/fl_platform.db"
+
+from pydantic import Field
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Federated Learning Platform"
-    DATABASE_URL: str = _SQLITE_FALLBACK  # default if env var is missing
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # Supabase
+    supabase_url: str = "https://your-project.supabase.co"
+    supabase_anon_key: str = "your-anon-key"
+    supabase_service_role_key: str = "your-service-role-key"
 
-    @field_validator("DATABASE_URL", mode="before")
-    @classmethod
-    def resolve_db_url(cls, v: str) -> str:
-        """Fall back to SQLite when Supabase password placeholder is still set."""
-        if not v or "YOUR_DB_PASSWORD" in v:
-            print(
-                "[config] DATABASE_URL still contains placeholder — "
-                f"falling back to SQLite: {_SQLITE_FALLBACK}"
-            )
-            return _SQLITE_FALLBACK
-        return v
+    # Redis / Celery
+    redis_url: str = "redis://localhost:6379/0"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    # App security
+    secret_key: str = "change-me-to-a-long-random-string"
 
-settings = Settings()
+    # MLflow
+    mlflow_tracking_uri: str = "http://localhost:5000"
+
+    # CORS — stored as comma-separated string in .env
+    cors_origins_raw: str = Field(default="http://localhost:5173", validation_alias="CORS_ORIGINS")
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins_raw.split(',') if o.strip()]
+    # Environment
+    environment: str = "development"
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()

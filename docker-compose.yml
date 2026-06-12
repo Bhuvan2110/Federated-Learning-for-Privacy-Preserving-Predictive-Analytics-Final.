@@ -1,71 +1,50 @@
 services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - CORS_ORIGINS=http://localhost:5173
+      - ENVIRONMENT=development
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./backend
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
 
-  backend:
-    build: ./backend
-    restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    environment:
-      - PYTHONPATH=/app
-      # DATABASE_URL is loaded from .env → points to Supabase
-      # UPLOAD_DIR is loaded from .env
-    volumes:
-      - uploads_data:/app/data/uploads
-    depends_on:
-      - redis
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "3000:3000"
-    environment:
-      - VITE_API_URL=
-    depends_on:
-      - backend
-
-  prometheus:
-    image: prom/prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-
-  grafana:
-    image: grafana/grafana
-    ports:
-      - "3001:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    depends_on:
-      - prometheus
-
   mlflow:
-    build:
-      context: ./mlflow
-      dockerfile: Dockerfile
+    image: ghcr.io/mlflow/mlflow:v2.13.0
     ports:
       - "5000:5000"
-
-  nginx:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - "80:80"
+    command: mlflow server --host 0.0.0.0 --port 5000
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,z
-    depends_on:
-      - frontend
-      - backend
+      - mlflow_data:/mlruns
 
 volumes:
-  uploads_data:
+  mlflow_data:

@@ -1,154 +1,143 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
-from typing import Any, Dict, List
+"""
+Prediction API — single & batch inference with Platt-scaled confidence.
+"""
+import json
+import io
 import csv
-from io import StringIO
-from app.db.session import get_db
-from app.db.models import ModelWeight, Prediction, Experiment, User
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from pydantic import BaseModel
+from typing import Any
 from app.api.dependencies import get_current_user
-from app.ml.logistic_regression import dot_product
-from app.ml.metrics import calibrate_probability
+from app.db.supabase_client import get_supabase
+from app.ml.logistic_regression import predict_proba, predict
+from app.ml.preprocessing import apply_scaler, compute_input_hash, parse_csv
+from app.ml.metrics import platt_scaling_fit, platt_scaling_predict
 
-router = APIRouter()
+router = APIRouter(prefix="/predict", tags=["predictions"])
 
-def _parse_feature(val: Any) -> float:
-    if val is None:
-        return 0.0
-    if isinstance(val, (int, float)):
-        return float(val)
-    val_str = str(val).strip()
-    try:
-        return float(val_str)
-    except ValueError:
-        # Standardize categorical inputs
-        lower_val = val_str.lower()
-        if lower_val in ["male", "m", "yes", "y", "true", "t"]:
-            return 1.0
-        elif lower_val in ["female", "f", "no", "n", "false", "off"]:
-            return 0.0
-        elif lower_val in ["other", "others", "o"]:
-            return 0.5
-        else:
-            # Deterministic hash mapping for custom names/text
-            char_sum = sum(ord(c) for c in val_str)
-            return float(char_sum % 100) / 100.0
+
+def _load_model(model_id: str, sb) -> dict:
+    """Load model weights from Supabase Storage."""
+    model_row = sb.table("models").select("*").eq("id", model_id).single().execute()
+    if not model_row.data:
+        raise HTTPException(status_code=404, detail="Model not found")
+    weights_bytes = sb.storage.from_("models").download(model_row.data["weights_path"])
+    return json.loads(weights_bytes.decode())
+
+
+class SinglePredictRequest(BaseModel):
+    model_id: str
+    features: dict[str, Any]
+
 
 @router.post("/single")
-def predict_single(
-    payload: Dict[str, Any],
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    model_id = payload.get("model_id")
-    features = payload.get("features", [])
-    platt_a = payload.get("platt_a", 1.0)
-    platt_b = payload.get("platt_b", 0.0)
-    
-    # Verify model exists and belongs to the current user's experiment
-    model = (
-        db.query(ModelWeight)
-        .join(Experiment, ModelWeight.experiment_id == Experiment.id)
-        .filter(ModelWeight.id == model_id, Experiment.user_id == current_user.id)
-        .first()
-    )
-    if not model:
-        # Fallback: check if model_id is actually an experiment_id, and get the final round's weights
-        model = (
-            db.query(ModelWeight)
-            .join(Experiment, ModelWeight.experiment_id == Experiment.id)
-            .filter(Experiment.id == model_id, Experiment.user_id == current_user.id)
-            .order_by(ModelWeight.round_number.desc())
-            .first()
-        )
-    if not model:
-        raise HTTPException(status_code=404, detail="Model not found or not owned by you")
-        
-    weights = model.weights_json.get("weights", []) if model.weights_json else []
-    bias = model.weights_json.get("bias", 0.0) if model.weights_json else 0.0
-    
-    if len(weights) != len(features):
-        raise HTTPException(status_code=400, detail="Feature dimension mismatch")
-        
-    parsed_features = [_parse_feature(f) for f in features]
-    logit = dot_product(parsed_features, weights) + bias
-    confidence = calibrate_probability(logit, platt_a, platt_b)
-    pred_class = 1 if confidence >= 0.5 else 0
-    
-    prediction = Prediction(
-        model_id=model.id,
-        input_data={"features": features},
-        output_result={"class": pred_class},
-        confidence=confidence
-    )
-    db.add(prediction)
-    db.commit()
-    db.refresh(prediction)
-    
+async def predict_single(body: SinglePredictRequest, user: dict = Depends(get_current_user)):
+    """Single-row JSON prediction."""
+    sb = get_supabase()
+    model_data = _load_model(body.model_id, sb)
+
+    weights = model_data["weights"]
+    bias = model_data["bias"]
+    scalers = model_data["scalers"]
+    feature_names = model_data.get("feature_names", [f"feature_{i}" for i in range(len(weights))])
+
+    # Build feature vector in correct order
+    try:
+        raw_row = [float(body.features.get(name, 0.0)) for name in feature_names]
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid feature values: {e}")
+
+    normalized_row = apply_scaler(raw_row, scalers)
+    prob = predict_proba(weights, bias, [normalized_row])[0]
+    pred = 1 if prob >= 0.5 else 0
+    input_hash = compute_input_hash(body.features)
+
+    # Store prediction history
+    sb.table("predictions").insert({
+        "user_id": user["id"],
+        "model_id": body.model_id,
+        "input_hash": input_hash,
+        "output": pred,
+        "confidence": round(prob, 4),
+    }).execute()
+
     return {
-        "prediction_id": prediction.id,
-        "class": pred_class,
-        "confidence": confidence
+        "prediction": pred,
+        "confidence": round(prob, 4),
+        "class_label": "Positive" if pred == 1 else "Negative",
+        "input_hash": input_hash,
     }
+
 
 @router.post("/batch")
 async def predict_batch(
-    model_id: int,
-    platt_a: float = 1.0,
-    platt_b: float = 0.0,
+    model_id: str,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
-    if not file.filename or not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files allowed")
-        
-    # Verify model exists and belongs to the current user's experiment
-    model = (
-        db.query(ModelWeight)
-        .join(Experiment, ModelWeight.experiment_id == Experiment.id)
-        .filter(ModelWeight.id == model_id, Experiment.user_id == current_user.id)
-        .first()
-    )
-    if not model:
-        # Fallback: check if model_id is actually an experiment_id, and get the final round's weights
-        model = (
-            db.query(ModelWeight)
-            .join(Experiment, ModelWeight.experiment_id == Experiment.id)
-            .filter(Experiment.id == model_id, Experiment.user_id == current_user.id)
-            .order_by(ModelWeight.round_number.desc())
-            .first()
-        )
-    if not model:
-        raise HTTPException(status_code=404, detail="Model not found or not owned by you")
-        
-    weights = model.weights_json.get("weights", []) if model.weights_json else []
-    bias = model.weights_json.get("bias", 0.0) if model.weights_json else 0.0
-    
-    contents = await file.read()
-    decoded = contents.decode('utf-8')
-    csv_reader = csv.reader(StringIO(decoded))
-    
-    rows = list(csv_reader)
-    if not rows or len(rows) < 2:
-        raise HTTPException(status_code=400, detail="CSV is empty or missing data")
-        
-    results: List[Dict[str, Any]] = []
-    for i in range(1, len(rows)):
+    """Batch prediction from CSV upload."""
+    sb = get_supabase()
+    model_data = _load_model(model_id, sb)
+
+    weights = model_data["weights"]
+    bias = model_data["bias"]
+    scalers = model_data["scalers"]
+    feature_names = model_data.get("feature_names", [])
+
+    content = await file.read()
+    headers, rows = parse_csv(content)
+
+    results = []
+    batch_id = compute_input_hash({"ts": str(id(rows))})
+
+    for i, row in enumerate(rows):
         try:
-            features = [_parse_feature(x) for x in rows[i]]
-            if len(features) != len(weights):
-                results.append({"row": i, "error": "Dimension mismatch"})
-                continue
-                
-            logit = dot_product(features, weights) + bias
-            confidence = calibrate_probability(logit, platt_a, platt_b)
-            pred_class = 1 if confidence >= 0.5 else 0
+            feature_map = {h: row[j] if j < len(row) else "0" for j, h in enumerate(headers)}
+            raw_row = [float(feature_map.get(name, 0.0)) for name in feature_names]
+            norm_row = apply_scaler(raw_row, scalers)
+            prob = predict_proba(weights, bias, [norm_row])[0]
+            pred = 1 if prob >= 0.5 else 0
+
+            sb.table("predictions").insert({
+                "user_id": user["id"],
+                "model_id": model_id,
+                "input_hash": compute_input_hash(feature_map),
+                "output": pred,
+                "confidence": round(prob, 4),
+                "batch_id": batch_id,
+            }).execute()
+
             results.append({
-                "row": i,
-                "class": pred_class,
-                "confidence": confidence
+                "row": i + 1,
+                "prediction": pred,
+                "confidence": round(prob, 4),
+                "class_label": "Positive" if pred == 1 else "Negative",
             })
         except Exception as e:
-            results.append({"row": i, "error": f"Failed to process row: {str(e)}"})
-            
-    return {"results": results}
+            results.append({"row": i + 1, "error": str(e)})
+
+    return {"batch_id": batch_id, "total": len(rows), "results": results}
+
+
+@router.get("/history")
+async def prediction_history(user: dict = Depends(get_current_user)):
+    sb = get_supabase()
+    preds = sb.table("predictions").select("*").eq("user_id", user["id"]).order("created_at", desc=True).limit(100).execute()
+    return preds.data
+
+
+@router.get("/models")
+async def list_available_models(user: dict = Depends(get_current_user)):
+    """List all models available for prediction (from completed experiments)."""
+    sb = get_supabase()
+    if user.get("role") in ("admin", "super_admin"):
+        exps = sb.table("experiments").select("id, algorithm, created_at").eq("status", "completed").execute()
+    else:
+        exps = sb.table("experiments").select("id, algorithm, created_at").eq("user_id", user["id"]).eq("status", "completed").execute()
+
+    models = []
+    for exp in exps.data:
+        model = sb.table("models").select("*").eq("experiment_id", exp["id"]).execute()
+        if model.data:
+            models.append({**model.data[0], "algorithm": exp["algorithm"]})
+    return models

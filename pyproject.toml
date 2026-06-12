@@ -1,7 +1,0 @@
-[tool.pyrefly]
-python_version = "3.14"
-search_path = [
-  "backend",
-  "/home/bhuvans/.local/lib/python3.14/site-packages"
-]
-ignore_missing_imports = true

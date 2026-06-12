@@ -1,37 +1,78 @@
 services:
-  # ─── Backend: FastAPI ───────────────────────────────────────────────────────
   - type: web
-    name: fl-backend
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    name: fl-platform-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
     plan: free
     envVars:
-      - key: DATABASE_URL
-        sync: false          # Set this manually in the Render dashboard
-      - key: REDIS_URL
-        fromService:
-          name: fl-redis
-          type: redis
-          property: connectionString
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: SECRET_KEY
         generateValue: true
-      - key: PYTHONPATH
-        value: /app
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: fl-redis
+          property: connectionString
+      - key: MLFLOW_TRACKING_URI
+        value: http://localhost:5000
+      - key: ENVIRONMENT
+        value: production
+      - key: CORS_ORIGINS
+        sync: false
 
-  # ─── Frontend: React + Vite ─────────────────────────────────────────────────
-  - type: web
-    name: fl-frontend
-    runtime: docker
-    dockerfilePath: ./frontend/Dockerfile
-    dockerContext: ./frontend
+  - type: worker
+    name: fl-platform-worker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    rootDir: backend
     plan: free
     envVars:
-      - key: VITE_API_URL
-        value: https://fl-backend-4l71.onrender.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: fl-platform-api
+          envVarKey: SECRET_KEY
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: fl-redis
+          property: connectionString
 
-  # ─── Redis ──────────────────────────────────────────────────────────────────
+  - type: static
+    name: fl-platform-ui
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    rootDir: frontend
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
   - type: redis
     name: fl-redis
     plan: free
-    ipAllowList: []
+    maxmemoryPolicy: noeviction

@@ -1,593 +1,222 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Cpu, Globe, Settings, BarChart2, CheckCircle, AlertCircle, Eye, TrendingUp, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react'
+import { apiFetch } from '../utils/apiFetch'
+import LiveChart from '../components/LiveChart'
+import {
+  Brain, Play, Settings, AlertCircle, Loader2,
+  CheckCircle2, Clock, ChevronDown, ChevronUp, Shield
+} from 'lucide-react'
 
-import { apiFetch, API_BASE, authHeaders } from '../utils/apiFetch';
+const ALGORITHMS = [
+  { value: 'fedavg',   label: 'FedAvg',    desc: 'Weighted average aggregation',          color: 'blue'   },
+  { value: 'fedprox',  label: 'FedProx',   desc: 'Proximal term for non-IID stability',   color: 'purple' },
+  { value: 'scaffold', label: 'SCAFFOLD',   desc: 'Control variates correct client drift', color: 'green'  },
+  { value: 'dpsgd',    label: 'FL + DP-SGD',desc: 'Differential privacy with ε tracking',  color: 'rose'   },
+  { value: 'central',  label: 'Central',    desc: 'Centralized baseline (no federation)',  color: 'amber'  },
+]
 
-const Training = () => {
-  const [mode, setMode] = useState('federated');
-  const [datasetId, setDatasetId] = useState('');
-  const [algorithm, setAlgorithm] = useState('FedAvg');
-  const [epochs, setEpochs] = useState(5);
-  const [learningRate, setLearningRate] = useState(0.01);
-  const [rounds, setRounds] = useState(10);
-  const [clients, setClients] = useState(3);
-  const [mu, setMu] = useState(0.0);
-  const [dpEpsilon, setDpEpsilon] = useState(0.0);
+const COLOR_MAP = {
+  blue:   { bg: 'bg-blue-500/15',   border: 'border-blue-500/40',   text: 'text-blue-400'    },
+  purple: { bg: 'bg-purple-500/15', border: 'border-purple-500/40', text: 'text-purple-400'  },
+  green:  { bg: 'bg-emerald-500/15',border: 'border-emerald-500/40',text: 'text-emerald-400' },
+  rose:   { bg: 'bg-rose-500/15',   border: 'border-rose-500/40',   text: 'text-rose-400'    },
+  amber:  { bg: 'bg-amber-500/15',  border: 'border-amber-500/40',  text: 'text-amber-400'   },
+}
 
-  const [isTraining, setIsTraining] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState('');
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
+export default function Training() {
+  const [datasets, setDatasets] = useState([])
+  const [algorithm, setAlgorithm] = useState('fedavg')
+  const [config, setConfig] = useState({
+    dataset_id: '', n_rounds: 20, lr: 0.01, n_clients: 5, local_epochs: 5,
+    mu: 0.1, clip_norm: 1.0, noise_multiplier: 1.0, delta: 1e-5, non_iid: false,
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+  const [activeExp, setActiveExp] = useState(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
-  // Selected experiment metrics state
-  const [selectedExpId, setSelectedExpId] = useState(null);
-  const [metricsData, setMetricsData] = useState(null);
-  const [loadingMetrics, setLoadingMetrics] = useState(false);
-  const [historyTrigger, setHistoryTrigger] = useState(0);
+  useEffect(() => {
+    apiFetch('/dataset/list').then(data => {
+      setDatasets(Array.isArray(data) ? data : [])
+      if (data.length > 0) setConfig(c => ({ ...c, dataset_id: data[0].id }))
+    }).catch(() => {})
+  }, [])
 
-  const simulateProgress = (phases) => {
-    return new Promise((resolve) => {
-      let phaseIdx = 0;
-      let p = 0;
-      const perPhase = 100 / phases.length;
-      setPhase(phases[0]);
-      const interval = setInterval(() => {
-        p += 2;
-        setProgress(Math.min(p, 100));
-        if (p >= (phaseIdx + 1) * perPhase && phaseIdx < phases.length - 1) {
-          phaseIdx++;
-          setPhase(phases[phaseIdx]);
-        }
-        if (p >= 100) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 100);
-    });
-  };
-
-  const startFederatedTraining = async () => {
-    if (!datasetId) { setError('Please enter a Dataset ID'); return; }
-    setError('');
-    setIsTraining(true);
-    setResult(null);
-    setProgress(0);
-
-    const phases = [
-      'Initializing global model...',
-      'Distributing to clients...',
-      `Round 1/${rounds}: Local training...`,
-      'Aggregating weights (FedAvg)...',
-      `Round ${Math.ceil(rounds / 2)}/${rounds}: Local training...`,
-      'Applying differential privacy...',
-      `Round ${rounds}/${rounds}: Final aggregation...`,
-      'Saving model weights...',
-    ];
-
+  const handleStart = async () => {
+    if (!config.dataset_id) { setError('Select a dataset'); return }
+    setSubmitting(true)
+    setError(null)
     try {
-      const [apiRes] = await Promise.all([
-        apiFetch(`/api/training/federated`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders(),
-          },
-          body: JSON.stringify({
-            dataset_id: parseInt(datasetId),
-            algorithm,
-            rounds: parseInt(rounds),
-            clients: parseInt(clients),
-            epochs: parseInt(epochs),
-            learning_rate: parseFloat(learningRate),
-            mu: parseFloat(mu),
-            dp_epsilon: parseFloat(dpEpsilon),
-          }),
-        }),
-        simulateProgress(phases),
-      ]);
-      const data = await apiRes.json();
-      if (!apiRes.ok) throw new Error(data.detail || 'Training failed');
-      setResult({ experimentId: data.experiment_id, message: data.message });
-      // Trigger a refresh of the history table
-      setHistoryTrigger(prev => prev + 1);
-      // Auto-load the metrics for this run
-      viewMetrics(data.experiment_id);
-    } catch (err) {
-      setError(err.message);
+      const result = await apiFetch('/training/start', {
+        method: 'POST',
+        body: JSON.stringify({ algorithm, ...config }),
+      })
+      setActiveExp({ id: result.experiment_id, algorithm })
+    } catch (e) {
+      setError(e.message)
     } finally {
-      setIsTraining(false);
-      setPhase('');
+      setSubmitting(false)
     }
-  };
+  }
 
-  const startCentralizedTraining = async () => {
-    if (!datasetId) { setError('Please enter a Dataset ID'); return; }
-    setError('');
-    setIsTraining(true);
-    setResult(null);
-    setProgress(0);
-
-    const phases = [
-      'Loading dataset...',
-      'Initializing model...',
-      `Epoch 1/${epochs}: Forward pass...`,
-      `Epoch ${Math.ceil(epochs / 2)}/${epochs}: Backpropagation...`,
-      `Epoch ${epochs}/${epochs}: Computing loss...`,
-      'Evaluating on validation set...',
-      'Saving centralized model...',
-    ];
-
-    try {
-      const [apiRes] = await Promise.all([
-        apiFetch(`/api/training/federated`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders(),
-          },
-          body: JSON.stringify({
-            dataset_id: parseInt(datasetId),
-            algorithm: 'Centralized',
-            rounds: 1,
-            clients: 1,
-            epochs: parseInt(epochs),
-            learning_rate: parseFloat(learningRate),
-            mu: 0.0,
-            dp_epsilon: 0.0,
-          }),
-        }),
-        simulateProgress(phases),
-      ]);
-      const data = await apiRes.json();
-      if (!apiRes.ok) throw new Error(data.detail || 'Training failed');
-      setResult({ experimentId: data.experiment_id, message: 'Centralized training job started!' });
-      setHistoryTrigger(prev => prev + 1);
-      viewMetrics(data.experiment_id);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsTraining(false);
-      setPhase('');
-    }
-  };
-
-  const viewMetrics = async (id) => {
-    setSelectedExpId(id);
-    setLoadingMetrics(true);
-    setMetricsData(null);
-    try {
-      const res = await apiFetch(`/api/metrics/${id}`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to fetch metrics');
-      setMetricsData(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingMetrics(false);
-    }
-  };
-
-  const isFederated = mode === 'federated';
+  const algoInfo = ALGORITHMS.find(a => a.value === algorithm)
+  const colrs = COLOR_MAP[algoInfo?.color || 'blue']
 
   return (
-    <div className="animate-fade-in">
-      <h1 style={{ fontSize: 'clamp(20px, 4vw, 24px)', fontWeight: 'bold', marginBottom: '24px' }}>Training</h1>
+    <div className="page-wrapper">
+      <h1 className="page-title">Training</h1>
+      <p className="page-subtitle">Configure and launch federated learning experiments</p>
 
-      {/* Mode Toggle — wraps on small screens */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '28px', flexWrap: 'wrap' }}>
-        {[
-          { key: 'federated', icon: Globe, label: 'Federated Training', desc: 'Multi-client distributed learning' },
-          { key: 'centralized', icon: Cpu, label: 'Centralized Training', desc: 'Single-node classic training' },
-        ].map(({ key, icon: Icon, label, desc }) => (
-          <button
-            key={key}
-            onClick={() => { setMode(key); setError(''); setResult(null); }}
-            style={{
-              flex: 1,
-              padding: '16px 20px',
-              borderRadius: '12px',
-              border: mode === key ? '2px solid var(--accent-primary)' : '2px solid var(--border-color)',
-              background: mode === key ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)',
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '14px',
-            }}
-          >
-            <div style={{
-              width: '42px', height: '42px', borderRadius: '10px',
-              background: mode === key ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              <Icon size={20} color={mode === key ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Config panel */}
+        <div className="space-y-4">
+          {/* Algorithm selector */}
+          <div className="glass-card p-5">
+            <h2 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+              <Brain size={14} className="text-brand-400" /> Algorithm
+            </h2>
+            <div className="grid grid-cols-1 gap-2">
+              {ALGORITHMS.map(algo => {
+                const c = COLOR_MAP[algo.color]
+                const selected = algorithm === algo.value
+                return (
+                  <button
+                    key={algo.value}
+                    onClick={() => setAlgorithm(algo.value)}
+                    className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all duration-200
+                      ${selected ? `${c.bg} ${c.border}` : 'border-white/5 hover:border-white/15 hover:bg-white/3'}`}
+                  >
+                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${selected ? `${c.text.replace('text-', 'bg-')}` : 'bg-slate-600'}`} />
+                    <div>
+                      <p className={`text-sm font-semibold ${selected ? c.text : 'text-slate-300'}`}>{algo.label}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{algo.desc}</p>
+                    </div>
+                    {algo.value === 'dpsgd' && (
+                      <Shield size={12} className="text-rose-400 ml-auto mt-0.5 flex-shrink-0" />
+                    )}
+                  </button>
+                )
+              })}
             </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: mode === key ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{label}</div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{desc}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Config Card */}
-      <div className="glass" style={{ padding: '28px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
-          <Settings size={16} color="var(--text-secondary)" />
-          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {isFederated ? 'Federated' : 'Centralized'} Configuration
-          </span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-              Dataset ID <span style={{ color: '#f87171' }}>*</span>
-            </label>
-            <input
-              type="number"
-              min="1"
-              placeholder="Enter dataset ID (from Datasets page)"
-              className="input-field"
-              style={{ marginBottom: 0 }}
-              value={datasetId}
-              onChange={(e) => setDatasetId(e.target.value)}
-            />
           </div>
 
-          {isFederated && (
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Algorithm</label>
-              <select
-                className="input-field"
-                style={{ background: 'var(--bg-secondary)', marginBottom: 0 }}
-                value={algorithm}
-                onChange={(e) => setAlgorithm(e.target.value)}
-              >
-                <option>FedAvg</option>
-                <option>FedProx</option>
-                <option>SCAFFOLD</option>
-              </select>
-            </div>
-          )}
-
-          {isFederated && (
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Global Rounds</label>
-              <input type="number" min="1" className="input-field" style={{ marginBottom: 0 }} value={rounds} onChange={(e) => setRounds(e.target.value)} />
-            </div>
-          )}
-
-          {isFederated && (
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Number of Clients</label>
-              <input type="number" min="1" className="input-field" style={{ marginBottom: 0 }} value={clients} onChange={(e) => setClients(e.target.value)} />
-            </div>
-          )}
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Local Epochs</label>
-            <input type="number" min="1" className="input-field" style={{ marginBottom: 0 }} value={epochs} onChange={(e) => setEpochs(e.target.value)} />
-          </div>
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Learning Rate</label>
-            <input type="number" step="0.001" min="0" className="input-field" style={{ marginBottom: 0 }} value={learningRate} onChange={(e) => setLearningRate(e.target.value)} />
-          </div>
-
-          {isFederated && algorithm === 'FedProx' && (
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>Proximal Term μ</label>
-              <input type="number" step="0.01" min="0" className="input-field" style={{ marginBottom: 0 }} value={mu} onChange={(e) => setMu(e.target.value)} />
-            </div>
-          )}
-
-          {isFederated && (
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                Privacy Budget ε &nbsp;<span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>(0 = disabled)</span>
-              </label>
-              <input type="number" step="0.1" min="0" className="input-field" style={{ marginBottom: 0 }} value={dpEpsilon} onChange={(e) => setDpEpsilon(e.target.value)} />
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div style={{
-            marginTop: '16px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: '8px', padding: '10px 14px', color: '#f87171', fontSize: '13px',
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <AlertCircle size={15} /> {error}
-          </div>
-        )}
-
-        <button
-          onClick={isFederated ? startFederatedTraining : startCentralizedTraining}
-          className="btn btn-primary"
-          disabled={isTraining}
-          style={{ marginTop: '24px', padding: '12px 28px', fontSize: '15px', gap: '8px' }}
-        >
-          <Play size={18} />
-          {isTraining
-            ? (isFederated ? 'Federated Training Running...' : 'Centralized Training Running...')
-            : (isFederated ? 'Start Federated Training' : 'Start Centralized Training')}
-        </button>
-      </div>
-
-      {/* Progress Bar */}
-      {isTraining && (
-        <div className="glass animate-fade-in" style={{ padding: '24px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            {isFederated ? <Globe size={18} color="var(--accent-primary)" /> : <Cpu size={18} color="var(--accent-primary)" />}
-            <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
-              {isFederated ? 'Federated Aggregation' : 'Centralized Training'}
-            </span>
-            <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: '15px' }}>{progress}%</span>
-          </div>
-          <div style={{ height: '10px', background: 'var(--bg-secondary)', borderRadius: '5px', overflow: 'hidden', marginBottom: '12px' }}>
-            <div style={{
-              height: '100%', width: `${progress}%`,
-              background: 'linear-gradient(90deg, var(--accent-primary), #a78bfa)',
-              transition: 'width 0.15s ease', borderRadius: '5px',
-            }} />
-          </div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            {phase}
-          </p>
-          {isFederated && (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
-              {Array.from({ length: parseInt(clients) || 3 }).map((_, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '6px 12px', background: 'rgba(255,255,255,0.05)',
-                  borderRadius: '20px', fontSize: '12px', color: 'var(--text-secondary)',
-                }}>
-                  <div style={{
-                    width: '7px', height: '7px', borderRadius: '50%',
-                    background: progress > (i + 1) * (100 / (parseInt(clients) || 3))
-                      ? 'var(--success)' : 'var(--accent-primary)',
-                    animation: 'pulse 1.2s ease-in-out infinite',
-                    animationDelay: `${i * 0.2}s`,
-                  }} />
-                  Client {i + 1}
-                </div>
-              ))}
-            </div>
-          )}
-          <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
-        </div>
-      )}
-
-      {/* Result Metrics panel */}
-      {selectedExpId && (
-        <div className="glass animate-fade-in" style={{ padding: '24px', marginBottom: '24px', border: '1px solid var(--accent-primary)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <TrendingUp size={18} color="var(--accent-primary)" />
-              <h2 style={{ fontSize: '16px', fontWeight: 'bold' }}>Training Results — Experiment #{selectedExpId}</h2>
-            </div>
-            <button onClick={() => setSelectedExpId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
-          </div>
-
-          {loadingMetrics ? (
-            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>Loading metrics...</div>
-          ) : metricsData ? (
-            <div>
-              <div className="grid-2" style={{ marginBottom: '20px' }}>
-                <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Final Loss</div>
-                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f87171', marginTop: '4px' }}>
-                    {metricsData.final_metrics?.loss ?? 'N/A'}
-                  </div>
-                </div>
-                <div style={{ padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Final Accuracy</div>
-                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--success)', marginTop: '4px' }}>
-                    {metricsData.final_metrics?.accuracy ? `${(metricsData.final_metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
-                  </div>
-                </div>
+          {/* Hyperparameters */}
+          <div className="glass-card p-5">
+            <h2 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+              <Settings size={14} className="text-brand-400" /> Hyperparameters
+            </h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Dataset</label>
+                <select
+                  value={config.dataset_id}
+                  onChange={e => setConfig(c => ({ ...c, dataset_id: e.target.value }))}
+                  className="input-field"
+                >
+                  <option value="">— Select dataset —</option>
+                  {datasets.map(d => <option key={d.id} value={d.id}>{d.filename} ({d.row_count?.toLocaleString()} rows)</option>)}
+                </select>
               </div>
 
-              {/* Progress Curves */}
-              {metricsData.curves && metricsData.curves.loss && metricsData.curves.loss.length > 0 && (
-                <div>
-                  <h3 style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '12px' }}>Round-by-Round Training Progression</h3>
-                  <div className="table-scroll">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Round / Epoch</th>
-                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Loss</th>
-                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Accuracy</th>
-                          <th style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>Progress Bar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metricsData.curves.loss.map((lossVal, idx) => {
-                          const accVal = metricsData.curves.accuracy[idx] || 0;
-                          return (
-                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                              <td style={{ padding: '6px 12px', fontWeight: '600' }}>#{idx + 1}</td>
-                              <td style={{ padding: '6px 12px', color: '#f87171' }}>{lossVal.toFixed(4)}</td>
-                              <td style={{ padding: '6px 12px', color: 'var(--success)' }}>{(accVal * 100).toFixed(1)}%</td>
-                              <td style={{ padding: '6px 12px', width: '40%' }}>
-                                <div style={{ height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', width: `${accVal * 100}%`, background: 'var(--success)' }} />
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { key: 'n_rounds',      label: 'Rounds',      type: 'number', min: 1, max: 100 },
+                  { key: 'lr',            label: 'Learning Rate', type: 'number', step: 0.001,  min: 0.0001, max: 1 },
+                  { key: 'n_clients',     label: 'Clients',     type: 'number', min: 2, max: 50, hide: algorithm === 'central' },
+                  { key: 'local_epochs',  label: 'Local Epochs', type: 'number', min: 1, max: 20 },
+                ].filter(f => !f.hide).map(field => (
+                  <div key={field.key}>
+                    <label className="text-xs text-slate-400 mb-1 block">{field.label}</label>
+                    <input
+                      type={field.type}
+                      step={field.step}
+                      min={field.min}
+                      max={field.max}
+                      value={config[field.key]}
+                      onChange={e => setConfig(c => ({ ...c, [field.key]: parseFloat(e.target.value) || e.target.value }))}
+                      className="input-field"
+                    />
                   </div>
+                ))}
+              </div>
+
+              {/* Non-IID toggle */}
+              {algorithm !== 'central' && (
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className="relative">
+                    <input type="checkbox" className="sr-only" checked={config.non_iid} onChange={e => setConfig(c => ({ ...c, non_iid: e.target.checked }))} />
+                    <div className={`w-10 h-5 rounded-full transition-colors ${config.non_iid ? 'bg-brand-600' : 'bg-surface-600'}`} />
+                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${config.non_iid ? 'translate-x-5' : ''}`} />
+                  </div>
+                  <span className="text-xs text-slate-300">Non-IID data partition</span>
+                </label>
+              )}
+
+              {/* FedProx */}
+              {algorithm === 'fedprox' && (
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">Proximal Term μ</label>
+                  <input type="number" step={0.01} min={0} value={config.mu} onChange={e => setConfig(c => ({ ...c, mu: parseFloat(e.target.value) }))} className="input-field" />
+                </div>
+              )}
+
+              {/* DP-SGD */}
+              {algorithm === 'dpsgd' && (
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { key: 'clip_norm',        label: 'Clip Norm C',       step: 0.1  },
+                    { key: 'noise_multiplier', label: 'Noise Multiplier σ', step: 0.1  },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label className="text-xs text-slate-400 mb-1 block">{f.label}</label>
+                      <input type="number" step={f.step} min={0} value={config[f.key]} onChange={e => setConfig(c => ({ ...c, [f.key]: parseFloat(e.target.value) }))} className="input-field" />
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
+
+            {error && (
+              <div className="mt-3 flex items-center gap-2 text-red-400 text-xs p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                <AlertCircle size={13} />
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleStart}
+              disabled={submitting || !config.dataset_id}
+              className={`w-full mt-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-98
+                          flex items-center justify-center gap-2 shadow-lg disabled:opacity-50
+                          ${colrs.bg} ${colrs.text} border ${colrs.border} hover:brightness-110`}
+            >
+              {submitting ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+              {submitting ? 'Launching…' : `Start ${algoInfo?.label}`}
+            </button>
+          </div>
+        </div>
+
+        {/* Live chart */}
+        <div className="space-y-4">
+          {activeExp ? (
+            <LiveChart experimentId={activeExp.id} algorithm={activeExp.algorithm} />
           ) : (
-            <div style={{ color: 'var(--text-secondary)' }}>No metrics found. Try starting a training run.</div>
+            <div className="glass-card p-12 text-center">
+              <Brain size={40} className="text-slate-700 mx-auto mb-4" />
+              <p className="text-slate-500 text-sm">Configure and start training to see the live chart</p>
+            </div>
+          )}
+
+          {activeExp && (
+            <div className="glass-card p-4 flex items-center gap-3">
+              <CheckCircle2 size={15} className="text-emerald-400" />
+              <div>
+                <p className="text-xs font-medium text-slate-200">Experiment started</p>
+                <p className="text-xs text-slate-500 font-mono">{activeExp.id}</p>
+              </div>
+            </div>
           )}
         </div>
-      )}
-
-      {/* History table */}
-      <ExperimentsTable refreshTrigger={historyTrigger} onViewMetrics={viewMetrics} />
-    </div>
-  );
-};
-
-const ExperimentsTable = ({ refreshTrigger, onViewMetrics }) => {
-  const [experiments, setExperiments] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [deleteError, setDeleteError] = useState('');
-
-  const fetchExperiments = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await apiFetch(`/api/training/compare`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      setExperiments(data.experiments || []);
-    } catch (_) { }
-    setLoading(false);
-  };
-
-  const deleteExperiment = async (id) => {
-    setDeletingId(id);
-    setConfirmDeleteId(null);
-    setDeleteError('');
-    try {
-      const res = await apiFetch(`/api/training/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Delete failed');
-      setExperiments(prev => prev.filter(e => e.id !== id));
-    } catch (err) {
-      setDeleteError(err.message);
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  useEffect(() => {
-    fetchExperiments();
-  }, [refreshTrigger]);
-
-  if (!experiments.length && !loading) return null;
-
-  return (
-    <div className="glass" style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-        <BarChart2 size={16} color="var(--text-secondary)" />
-        <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          My Experiment History
-        </span>
-        <button onClick={fetchExperiments} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', fontSize: '12px' }}>
-          ↻ Refresh
-        </button>
-      </div>
-
-      {deleteError && (
-        <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#f87171', fontSize: '12px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {deleteError}
-          <button onClick={() => setDeleteError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}>✕</button>
-        </div>
-      )}
-
-      <div className="table-scroll">
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '560px' }}>
-          <thead>
-            <tr>
-              {['ID', 'Name', 'Algorithm', 'Status', 'Created', 'Actions'].map((h) => (
-                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {experiments.map((exp) => (
-              <tr key={exp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>#{exp.id}</td>
-                <td style={{ padding: '8px 12px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.name}</td>
-                <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{exp.algorithm}</td>
-                <td style={{ padding: '8px 12px' }}>
-                  <span style={{
-                    padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
-                    background: exp.status === 'completed' ? 'rgba(16,185,129,0.15)' : exp.status === 'running' ? 'rgba(59,130,246,0.15)' : 'rgba(148,163,184,0.15)',
-                    color: exp.status === 'completed' ? 'var(--success)' : exp.status === 'running' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                  }}>
-                    {exp.status}
-                  </span>
-                </td>
-                <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                  {exp.created_at ? new Date(exp.created_at).toLocaleString() : '—'}
-                </td>
-                <td style={{ padding: '8px 12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {exp.status === 'completed' && (
-                      <button
-                        onClick={() => onViewMetrics(exp.id)}
-                        className="btn btn-secondary"
-                        style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      >
-                        <Eye size={12} /> View Results
-                      </button>
-                    )}
-                    {confirmDeleteId === exp.id ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '11px', color: '#f87171' }}>Delete?</span>
-                        <button
-                          onClick={() => deleteExperiment(exp.id)}
-                          disabled={deletingId === exp.id}
-                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600 }}
-                        >
-                          {deletingId === exp.id ? '...' : 'Yes'}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(null)}
-                          style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer' }}
-                        >
-                          No
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmDeleteId(exp.id)}
-                        disabled={exp.status === 'running' || deletingId === exp.id}
-                        title={exp.status === 'running' ? 'Cannot delete a running experiment' : 'Delete experiment'}
-                        style={{
-                          padding: '4px 6px', borderRadius: '5px',
-                          border: '1px solid rgba(239,68,68,0.3)',
-                          background: 'rgba(239,68,68,0.08)',
-                          color: exp.status === 'running' ? 'var(--text-secondary)' : '#f87171',
-                          cursor: exp.status === 'running' ? 'not-allowed' : 'pointer',
-                          display: 'flex', alignItems: 'center',
-                          opacity: exp.status === 'running' ? 0.4 : 1,
-                          transition: 'background 0.2s',
-                        }}
-                        onMouseEnter={e => { if (exp.status !== 'running') e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
-                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
-  );
-};
-
-export default Training;
+  )
+}

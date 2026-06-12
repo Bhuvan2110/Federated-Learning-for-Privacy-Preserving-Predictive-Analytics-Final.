@@ -1,159 +1,196 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Database, CheckCircle, Clock, TrendingUp, AlertCircle, ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch, authHeaders } from '../utils/apiFetch';
+import { useState, useEffect } from 'react'
+import { apiFetch } from '../utils/apiFetch'
+import {
+  Brain, Database, BarChart3, CheckCircle2, Clock,
+  TrendingUp, Activity, RefreshCw, AlertCircle, Cpu
+} from 'lucide-react'
 
-const StatCard = ({ title, value, icon, accent, onClick, loading }) => (
-  <div className="card card-hover" onClick={onClick} style={{ display:'flex', alignItems:'center', gap:'var(--s4)', padding:'var(--s4)' }}>
-    {loading ? (
-      <>
-        <div className="skeleton" style={{ width:'40px', height:'40px', borderRadius:'var(--r)', flexShrink:0 }}/>
-        <div style={{ flex:1 }}>
-          <div className="skeleton" style={{ width:'60%', height:'10px', marginBottom:'8px' }}/>
-          <div className="skeleton" style={{ width:'40%', height:'22px' }}/>
-        </div>
-      </>
-    ) : (
-      <>
-        <div style={{ width:'40px', height:'40px', borderRadius:'var(--r)', background:accent+'18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, color:accent }}>
-          {icon}
-        </div>
-        <div>
-          <p className="overline" style={{ marginBottom:'3px' }}>{title}</p>
-          <p className="stat-number tabular">{value}</p>
-        </div>
-      </>
-    )}
-  </div>
-);
+const ALGO_COLORS = {
+  fedavg:   { text: 'text-blue-400',    bg: 'bg-blue-500/15',    border: 'border-blue-500/30'   },
+  fedprox:  { text: 'text-purple-400',  bg: 'bg-purple-500/15',  border: 'border-purple-500/30' },
+  scaffold: { text: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30'},
+  dpsgd:    { text: 'text-rose-400',    bg: 'bg-rose-500/15',    border: 'border-rose-500/30'   },
+  central:  { text: 'text-amber-400',   bg: 'bg-amber-500/15',   border: 'border-amber-500/30'  },
+}
 
-const statusBadge = (s) => {
-  if (s === 'completed') return <span className="badge badge-success">completed</span>;
-  if (s === 'running')   return <span className="badge badge-running">running</span>;
-  if (s === 'failed')    return <span className="badge badge-error">failed</span>;
-  return <span className="badge badge-neutral">{s}</span>;
-};
+function StatCard({ icon: Icon, label, value, sub, color = 'brand' }) {
+  return (
+    <div className="stat-card">
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2
+        ${color === 'brand'   ? 'bg-brand-500/15'   : ''}
+        ${color === 'green'   ? 'bg-emerald-500/15' : ''}
+        ${color === 'purple'  ? 'bg-purple-500/15'  : ''}
+        ${color === 'amber'   ? 'bg-amber-500/15'   : ''}
+      `}>
+        <Icon size={16} className={
+          color === 'brand'  ? 'text-brand-400'   :
+          color === 'green'  ? 'text-emerald-400' :
+          color === 'purple' ? 'text-purple-400'  : 'text-amber-400'
+        } />
+      </div>
+      <p className="text-2xl font-bold text-slate-100">{value}</p>
+      <p className="text-xs font-medium text-slate-400">{label}</p>
+      {sub && <p className="text-xs text-slate-600 mt-0.5">{sub}</p>}
+    </div>
+  )
+}
 
-const Dashboard = () => {
-  const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [userEmail, setUserEmail] = useState('');
-  const [recentExps, setRecentExps] = useState([]);
-  const [role, setRole] = useState('');
+function StatusBadge({ status }) {
+  const cls = {
+    pending:   'badge-pending',
+    running:   'badge-running',
+    completed: 'badge-completed',
+    failed:    'badge-failed',
+  }
+  return <span className={cls[status] || 'badge-pending'}>{status}</span>
+}
 
-  const fetchDashboard = useCallback(async () => {
-    setLoading(true);
+function AlgoBadge({ algo }) {
+  const c = ALGO_COLORS[algo] || ALGO_COLORS.fedavg
+  return (
+    <span className={`px-2 py-0.5 rounded-md text-xs font-mono ${c.bg} ${c.text} border ${c.border}`}>
+      {algo}
+    </span>
+  )
+}
+
+export default function Dashboard() {
+  const [experiments, setExperiments] = useState([])
+  const [compare, setCompare] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const load = async () => {
     try {
-      const [meRes, dsRes, trainRes] = await Promise.all([
-        apiFetch('/api/auth/me',          { headers: authHeaders() }),
-        apiFetch('/api/datasets/list',    { headers: authHeaders() }),
-        apiFetch('/api/training/compare', { headers: authHeaders() }),
-      ]);
-      if (meRes.ok) { const me = await meRes.json(); setUserEmail(me.email); localStorage.setItem('userEmail', me.email); }
-      const ds   = dsRes.ok   ? (await dsRes.json()).datasets    || [] : [];
-      const exps = trainRes.ok? (await trainRes.json()).experiments || [] : [];
-      setStats({
-        totalDatasets:        ds.length,
-        totalExperiments:     exps.length,
-        completedExperiments: exps.filter(e=>e.status==='completed').length,
-        runningExperiments:   exps.filter(e=>e.status==='running').length,
-      });
-      setRecentExps(exps.slice(0,6));
-      setRole(localStorage.getItem('role')||'user');
-    } catch(err) { console.error(err); }
-    finally { setLoading(false); }
-  }, []);
+      setLoading(true)
+      const [exps, cmp] = await Promise.all([
+        apiFetch('/training/list'),
+        apiFetch('/training/compare'),
+      ])
+      setExperiments(Array.isArray(exps) ? exps : [])
+      setCompare(Array.isArray(cmp) ? cmp : [])
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  useEffect(() => {
-    fetchDashboard();
-    const t = setInterval(()=>{ if(recentExps.some(e=>e.status==='running')) fetchDashboard(); }, 15000);
-    return ()=>clearInterval(t);
-  }, [fetchDashboard]);
+  useEffect(() => { load() }, [])
 
-  const cards = stats ? [
-    { title:'Datasets Uploaded',  value:stats.totalDatasets,        icon:<Database size={18}/>,      accent:'var(--phase-security)', onClick:()=>navigate('/datasets') },
-    { title:'Total Experiments',  value:stats.totalExperiments,     icon:<Activity size={18}/>,      accent:'var(--phase-training)', onClick:()=>navigate('/training') },
-    { title:'Completed Runs',     value:stats.completedExperiments, icon:<CheckCircle size={18}/>,   accent:'var(--phase-predict)',  onClick:()=>navigate('/training') },
-    { title:'Active / Running',   value:stats.runningExperiments,   icon:<Clock size={18}/>,         accent:'var(--phase-ui-ux)',    onClick:()=>navigate('/training') },
-  ] : [{},{},{},{}];
+  const completed = experiments.filter(e => e.status === 'completed').length
+  const running   = experiments.filter(e => e.status === 'running').length
+  const bestAcc   = compare.reduce((best, c) => Math.max(best, c.metrics?.accuracy || 0), 0)
+  const bestAlgo  = compare.find(c => c.metrics?.accuracy === bestAcc)?.algorithm
 
   return (
-    <div className="animate-fade-in">
-      {/* Page header */}
-      <div className="page-header">
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:'var(--s3)' }}>
-          <div>
-            <h1 className="page-title">Platform Overview</h1>
-            {userEmail && (
-              <p className="page-sub">
-                Signed in as <span style={{ color:'var(--primary)', fontWeight:600 }}>{userEmail}</span>
-                {role && <span style={{ marginLeft:'8px' }}><span className="badge badge-neutral" style={{ verticalAlign:'middle' }}>{role}</span></span>}
-              </p>
-            )}
-          </div>
-          <button className="btn btn-secondary" onClick={fetchDashboard} style={{ gap:'5px', fontSize:'12px' }}>
-            <Activity size={13}/> Refresh
-          </button>
+    <div className="page-wrapper">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Overview of your federated learning experiments</p>
         </div>
+        <button onClick={load} className="btn-secondary text-xs gap-1.5">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid-auto" style={{ marginBottom:'var(--s6)' }}>
-        {cards.map((c,i) => <StatCard key={i} {...c} loading={loading}/>)}
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard icon={Brain}       label="Experiments"  value={experiments.length} color="brand"  />
+        <StatCard icon={CheckCircle2} label="Completed"   value={completed}          color="green"  />
+        <StatCard icon={Activity}    label="Running"      value={running}            color="purple" sub={running > 0 ? 'Training active' : 'Idle'} />
+        <StatCard icon={TrendingUp}  label="Best Accuracy" value={bestAcc ? `${(bestAcc*100).toFixed(1)}%` : '—'} color="amber" sub={bestAlgo} />
       </div>
+
+      {error && (
+        <div className="glass-card p-4 mb-6 flex items-center gap-3 text-red-400 border border-red-500/30">
+          <AlertCircle size={16} />
+          <span className="text-sm">{error}</span>
+        </div>
+      )}
+
+      {/* Model Summary */}
+      {compare.length > 0 && (
+        <div className="glass-card p-5 mb-6">
+          <h2 className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
+            <BarChart3 size={15} className="text-brand-400" />
+            Model Performance Summary
+          </h2>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            {compare.map(c => {
+              const col = ALGO_COLORS[c.algorithm] || ALGO_COLORS.fedavg
+              return (
+                <div key={c.experiment_id} className={`rounded-xl p-3 border ${col.bg} ${col.border}`}>
+                  <p className={`text-xs font-mono font-bold uppercase ${col.text} mb-2`}>{c.algorithm}</p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Acc</span>
+                      <span className="text-slate-200 font-mono">{((c.metrics?.accuracy || 0) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">F1</span>
+                      <span className="text-slate-200 font-mono">{((c.metrics?.f1 || 0) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">AUC</span>
+                      <span className="text-slate-200 font-mono">{(c.metrics?.auc || 0).toFixed(3)}</span>
+                    </div>
+                    {c.final_epsilon && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">ε</span>
+                        <span className="text-rose-400 font-mono">{c.final_epsilon.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent experiments */}
-      {!loading && recentExps.length > 0 && (
-        <div className="card" style={{ padding:0, overflow:'hidden' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px var(--s4)', borderBottom:'0.5px solid var(--border-subtle)' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'var(--s2)' }}>
-              <TrendingUp size={14} color="var(--text-muted)"/>
-              <span className="overline">Recent Training Runs</span>
-            </div>
-            <button onClick={()=>navigate('/training')} className="btn-icon" style={{ font:'var(--text-label-sm)', display:'flex', alignItems:'center', gap:'3px', color:'var(--primary)' }}>
-              View all <ArrowRight size={12}/>
-            </button>
+      <div className="glass-card">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center gap-2">
+          <Cpu size={15} className="text-brand-400" />
+          <span className="text-sm font-semibold text-slate-200">Recent Experiments</span>
+          <span className="ml-auto text-xs text-slate-500">{experiments.length} total</span>
+        </div>
+        {loading ? (
+          <div className="p-12 text-center text-slate-500 text-sm animate-pulse">Loading…</div>
+        ) : experiments.length === 0 ? (
+          <div className="p-12 text-center">
+            <Brain size={32} className="text-slate-700 mx-auto mb-3" />
+            <p className="text-slate-500 text-sm">No experiments yet</p>
+            <p className="text-slate-600 text-xs mt-1">Upload a dataset and start training</p>
           </div>
-          <div className="table-scroll">
-            <table className="data-table" style={{ minWidth:'520px' }}>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
               <thead>
-                <tr><th>ID</th><th>Name</th><th>Algorithm</th><th>Status</th><th>Created</th></tr>
+                <tr>
+                  <th>Algorithm</th>
+                  <th>Dataset</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                </tr>
               </thead>
               <tbody>
-                {recentExps.map(exp => (
+                {experiments.slice(0, 10).map(exp => (
                   <tr key={exp.id}>
-                    <td><code>#{exp.id}</code></td>
-                    <td className="td-primary" style={{ maxWidth:'160px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{exp.name}</td>
-                    <td>{exp.algorithm}</td>
-                    <td>{statusBadge(exp.status)}</td>
-                    <td style={{ whiteSpace:'nowrap' }}>{exp.created_at ? new Date(exp.created_at).toLocaleString() : '—'}</td>
+                    <td><AlgoBadge algo={exp.algorithm} /></td>
+                    <td className="text-slate-400 text-xs font-mono">{exp.datasets?.filename || '—'}</td>
+                    <td><StatusBadge status={exp.status} /></td>
+                    <td className="text-slate-500 text-xs">{new Date(exp.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!loading && recentExps.length === 0 && (
-        <div className="card" style={{ padding:'40px', textAlign:'center' }}>
-          <div style={{ width:'44px', height:'44px', borderRadius:'var(--r-md)', background:'var(--surface-high)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto var(--s4)' }}>
-            <Activity size={22} color="var(--text-muted)"/>
-          </div>
-          <h3 style={{ font:'var(--text-headline-md)', color:'var(--text-primary)', marginBottom:'6px' }}>No experiments yet</h3>
-          <p style={{ font:'var(--text-body-md)', color:'var(--text-secondary)', marginBottom:'var(--s4)', maxWidth:'320px', margin:'0 auto var(--s4)' }}>
-            Upload a dataset and start a training run to see your statistics here.
-          </p>
-          <div style={{ display:'flex', gap:'var(--s3)', justifyContent:'center', flexWrap:'wrap' }}>
-            <button onClick={()=>navigate('/datasets')} className="btn btn-secondary">Upload Dataset</button>
-            <button onClick={()=>navigate('/training')} className="btn btn-primary">Start Training</button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  );
-};
-
-export default Dashboard;
+  )
+}

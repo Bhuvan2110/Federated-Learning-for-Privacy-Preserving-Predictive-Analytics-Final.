@@ -1,144 +1,93 @@
-import csv
-import json
-from io import StringIO
-from typing import Any, List
+"""
+Datasets API — CSV upload to Supabase Storage + preprocessing.
+"""
+import io
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.db.models import Dataset, ModelWeight, Experiment
 from app.api.dependencies import get_current_user
-from app.db.models import User
+from app.db.supabase_client import get_supabase
+from app.ml.preprocessing import parse_csv, profile_columns, min_max_normalize
 
-router = APIRouter()
-
-
-def _try_float(val: str) -> bool:
-    """Return True if val can be parsed as a float."""
-    try:
-        float(val)
-        return True
-    except (ValueError, TypeError):
-        return False
+router = APIRouter(prefix="/dataset", tags=["datasets"])
 
 
 @router.post("/upload")
-async def upload_dataset(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    if not file.filename or not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
+async def upload_dataset(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Upload CSV to Supabase Storage and store metadata in DB."""
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
 
-    contents = await file.read()
+    content = await file.read()
+    sb = get_supabase()
+    user_id = user["id"]
+
+    # Parse and profile
+    headers, rows = parse_csv(content)
+    if len(rows) < 10:
+        raise HTTPException(status_code=400, detail="CSV must have at least 10 rows")
+
+    col_profiles = profile_columns(headers, rows)
+    storage_path = f"datasets/{user_id}/{file.filename}"
+
+    # Upload to Supabase Storage
     try:
-        decoded = contents.decode('utf-8')
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file encoding. Must be UTF-8.")
-
-    csv_reader = csv.DictReader(StringIO(decoded))
-
-    rows = list(csv_reader)
-    if not rows:
-        raise HTTPException(status_code=400, detail="CSV file is empty.")
-
-    columns = list(rows[0].keys())
-
-    # Simple automatic column profiler
-    col_stats = {}
-    for col in columns:
-        vals = [row[col] for row in rows if row.get(col)]
-        unique_vals = sorted(set(vals))
-        missing = sum(1 for row in rows if not row.get(col))
-
-        # Detect if column is numeric (try parsing all non-empty values)
-        is_numeric = all(
-            _try_float(v) for v in unique_vals
-        ) if unique_vals else True
-
-        col_stats[col] = {
-            "unique_counts": len(unique_vals),
-            "missing_count": missing,
-            "missing_percentage": (missing / len(rows)) * 100,
-            "is_numeric": is_numeric,
-            # Store actual unique values only for categoricals (≤20 unique)
-            # so the Predict page can render dropdowns instead of free-text
-            "unique_values": unique_vals if len(unique_vals) <= 20 else [],
-        }
-
-    # Store CSV content directly in the database — no disk required.
-    # This makes uploads survive Render redeploys (ephemeral filesystem).
-    dataset = Dataset(
-        user_id=current_user.id,
-        filename=file.filename,
-        filepath=f"db://user{current_user.id}/{file.filename}",  # logical reference only
-        csv_content=decoded,
-        metadata_json={
-            "total_rows": len(rows),
-            "columns": columns,
-            "stats": col_stats
-        }
-    )
-    db.add(dataset)
-    db.commit()
-    db.refresh(dataset)
-
-    return {"message": "Dataset uploaded successfully", "dataset_id": dataset.id, "metadata": dataset.metadata_json}
-
-
-@router.get("/list")
-def list_datasets(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    datasets = (
-        db.query(Dataset)
-        .filter(Dataset.user_id == current_user.id)
-        .order_by(Dataset.id.desc())
-        .all()
-    )
-    return {"datasets": [
-        {
-            "id": d.id,
-            "filename": d.filename,
-            "created_at": str(d.created_at),
-            "metadata": d.metadata_json,
-        }
-        for d in datasets
-    ]}
-
-
-@router.get("/preview/{dataset_id}")
-def preview_dataset(dataset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-
-    # Read first 20 rows from DB-stored content
-    preview_rows = []
-    try:
-        csv_text = dataset.csv_content
-        if not csv_text:
-            raise HTTPException(status_code=500, detail="CSV content not available. Please re-upload the dataset.")
-        csv_reader = csv.DictReader(StringIO(str(csv_text)))
-        for i, row in enumerate(csv_reader):
-            if i >= 20:
-                break
-            preview_rows.append(row)
-    except HTTPException:
-        raise
+        sb.storage.from_("datasets").upload(
+            storage_path, content, {"content-type": "text/csv", "upsert": "true"}
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading dataset: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {str(e)}")
+
+    # Save metadata to DB
+    result = sb.table("datasets").insert({
+        "user_id": user_id,
+        "filename": file.filename,
+        "storage_path": storage_path,
+        "cols": col_profiles,
+        "row_count": len(rows),
+    }).execute()
 
     return {
-        "metadata": dataset.metadata_json,
-        "preview": preview_rows
+        "id": result.data[0]["id"],
+        "filename": file.filename,
+        "row_count": len(rows),
+        "columns": col_profiles,
+        "storage_path": storage_path,
     }
 
 
-@router.delete("/{dataset_id}")
-def delete_dataset(dataset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
-    if not dataset:
+@router.get("/preview/{dataset_id}")
+async def preview_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
+    """Return first 20 rows + column statistics."""
+    sb = get_supabase()
+    ds = sb.table("datasets").select("*").eq("id", dataset_id).eq("user_id", user["id"]).single().execute()
+    if not ds.data:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    db.delete(dataset)
-    db.commit()
-    return {"message": "Dataset deleted successfully", "dataset_id": dataset_id}
+    csv_bytes = sb.storage.from_("datasets").download(ds.data["storage_path"])
+    headers, rows = parse_csv(csv_bytes)
+    preview_rows = rows[:20]
+    col_profiles = profile_columns(headers, rows)
+
+    return {
+        "headers": headers,
+        "rows": preview_rows,
+        "col_profiles": col_profiles,
+        "total_rows": len(rows),
+    }
+
+
+@router.get("/list")
+async def list_datasets(user: dict = Depends(get_current_user)):
+    sb = get_supabase()
+    result = sb.table("datasets").select("id, filename, row_count, created_at, cols").eq("user_id", user["id"]).order("created_at", desc=True).execute()
+    return result.data
+
+
+@router.delete("/{dataset_id}")
+async def delete_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
+    sb = get_supabase()
+    ds = sb.table("datasets").select("*").eq("id", dataset_id).eq("user_id", user["id"]).single().execute()
+    if not ds.data:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    sb.storage.from_("datasets").remove([ds.data["storage_path"]])
+    sb.table("datasets").delete().eq("id", dataset_id).execute()
+    return {"message": "Dataset deleted"}

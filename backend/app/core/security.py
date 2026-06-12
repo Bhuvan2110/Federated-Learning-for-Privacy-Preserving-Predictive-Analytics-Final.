@@ -1,113 +1,135 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Union
-from passlib.context import CryptContext
-import jwt
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
+"""
+AES-256-GCM + RSA-2048-OAEP hybrid encryption.
+No external ML libraries — pure Python cryptography.
+"""
 import os
+import base64
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
 
-# rounds=4 (bcrypt minimum) gives ~3-5ms hash time → total login round-trip ≈20-25ms.
-# Increase to 10-12 for production deployments that can tolerate ~100-500ms.
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4)
 
-ALGORITHM = "RS256"
+# ── RSA Key Management ────────────────────────────────────────────────────────
 
-def _load_or_create_rsa_key():
-    """
-    Load the RSA private key from the database (via env var JWT_PRIVATE_KEY),
-    or from /tmp/ as a fallback, or generate a new one.
-    Storing the key in an env var / DB means it survives Render redeploys
-    so existing tokens remain valid.
-    """
-    # 1. Try env var (set this in Render dashboard once, never changes)
-    key_pem_env = os.getenv("JWT_PRIVATE_KEY", "")
-    if key_pem_env:
-        try:
-            key_pem = key_pem_env.replace("\\n", "\n").encode()
-            return serialization.load_pem_private_key(
-                key_pem, password=None, backend=default_backend()
-            )
-        except Exception:
-            pass
-
-    # 2. Try disk cache (/tmp — works within a single deployment lifetime)
-    KEY_PATH = "/tmp/jwt_private.pem"
-    if os.path.exists(KEY_PATH):
-        try:
-            with open(KEY_PATH, "rb") as key_file:
-                return serialization.load_pem_private_key(
-                    key_file.read(), password=None, backend=default_backend()
-                )
-        except Exception:
-            pass
-
-    # 3. Generate new key (only happens on first-ever startup)
-    key = rsa.generate_private_key(
-        public_exponent=65537, key_size=2048, backend=default_backend()
+def generate_rsa_keypair() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+    """Generate RSA-2048 keypair."""
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
     )
-    try:
-        pem = key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
-        with open(KEY_PATH, "wb") as key_file:
-            key_file.write(pem)
-        print("NEW RSA key generated. Copy the value below into Render env var JWT_PRIVATE_KEY:")
-        print(pem.decode())
-    except Exception:
-        pass
-    return key
+    return private_key, private_key.public_key()
 
 
-private_key = _load_or_create_rsa_key()
-public_key = private_key.public_key()
-
-private_pem = private_key.private_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.NoEncryption()
-)
-
-public_pem = public_key.public_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PublicFormat.SubjectPublicKeyInfo
-)
-
-def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        # 7-day expiry — users stay logged in without being kicked out
-        expire = datetime.now(timezone.utc) + timedelta(days=7)
-    to_encode = {"exp": expire, "sub": str(subject)}
-    encoded_jwt = jwt.encode(to_encode, private_pem, algorithm=ALGORITHM)
-    return encoded_jwt
+def export_public_key_pem(public_key: rsa.RSAPublicKey) -> str:
+    return public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
 
 
-def create_refresh_token(subject: Union[str, Any]) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=7)
-    to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
-    encoded_jwt = jwt.encode(to_encode, private_pem, algorithm=ALGORITHM)
-    return encoded_jwt
+def load_public_key_pem(pem: str) -> rsa.RSAPublicKey:
+    return serialization.load_pem_public_key(pem.encode())
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+def rsa_encrypt(public_key: rsa.RSAPublicKey, plaintext: bytes) -> bytes:
+    """RSA-2048-OAEP-SHA256 encrypt (used for AES key exchange)."""
+    return public_key.encrypt(
+        plaintext,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
 
-def aes_encrypt(data: bytes, key: bytes) -> tuple:
-    iv = os.urandom(12)
-    cipher = Cipher(algorithms.AES(key), modes.GCM(iv), backend=default_backend())
-    encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(data) + encryptor.finalize()
-    return iv, ciphertext, encryptor.tag
 
-def aes_decrypt(iv: bytes, ciphertext: bytes, tag: bytes, key: bytes) -> bytes:
-    cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
-    decryptor = cipher.decryptor()
-    return decryptor.update(ciphertext) + decryptor.finalize()
+def rsa_decrypt(private_key: rsa.RSAPrivateKey, ciphertext: bytes) -> bytes:
+    return private_key.decrypt(
+        ciphertext,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
+
+
+# ── AES-256-GCM ───────────────────────────────────────────────────────────────
+
+def generate_aes_key() -> bytes:
+    """Generate a 256-bit AES key."""
+    return os.urandom(32)
+
+
+def aes_encrypt(key: bytes, plaintext: bytes) -> dict:
+    """
+    AES-256-GCM encrypt.
+    Returns dict with base64-encoded nonce + ciphertext.
+    """
+    nonce = os.urandom(12)  # 96-bit nonce for GCM
+    aesgcm = AESGCM(key)
+    ct = aesgcm.encrypt(nonce, plaintext, None)
+    return {
+        "nonce": base64.b64encode(nonce).decode(),
+        "ciphertext": base64.b64encode(ct).decode(),
+    }
+
+
+def aes_decrypt(key: bytes, nonce_b64: str, ciphertext_b64: str) -> bytes:
+    """AES-256-GCM decrypt."""
+    nonce = base64.b64decode(nonce_b64)
+    ct = base64.b64decode(ciphertext_b64)
+    aesgcm = AESGCM(key)
+    return aesgcm.decrypt(nonce, ct, None)
+
+
+# ── Hybrid Encryption (RSA-wrapped AES) ──────────────────────────────────────
+
+def hybrid_encrypt(public_key_pem: str, payload: bytes) -> dict:
+    """
+    Hybrid encrypt: generate AES key, encrypt with RSA, encrypt payload with AES.
+    """
+    pub = load_public_key_pem(public_key_pem)
+    aes_key = generate_aes_key()
+    encrypted_key = rsa_encrypt(pub, aes_key)
+    encrypted_payload = aes_encrypt(aes_key, payload)
+    return {
+        "encrypted_key": base64.b64encode(encrypted_key).decode(),
+        **encrypted_payload,
+    }
+
+
+def hybrid_decrypt(private_key: rsa.RSAPrivateKey, encrypted_key_b64: str,
+                   nonce_b64: str, ciphertext_b64: str) -> bytes:
+    aes_key = rsa_decrypt(private_key, base64.b64decode(encrypted_key_b64))
+    return aes_decrypt(aes_key, nonce_b64, ciphertext_b64)
+
+
+# ── SecAgg Stub ───────────────────────────────────────────────────────────────
+
+def secagg_mask(weights: list[float], mask_seed: int) -> list[float]:
+    """Pairwise additive masking stub for Secure Aggregation."""
+    import random
+    rng = random.Random(mask_seed)
+    return [w + rng.gauss(0, 1e-6) for w in weights]
+
+
+def secagg_unmask(masked_sum: list[float], masks: list[list[float]]) -> list[float]:
+    """Remove accumulated masks from aggregated weights."""
+    result = list(masked_sum)
+    for mask in masks:
+        for i, m in enumerate(mask):
+            result[i] -= m
+    return result
+
+
+# ── Module-level server keypair (loaded once per process) ─────────────────────
+_server_private_key, _server_public_key = generate_rsa_keypair()
+
+
+def get_server_private_key() -> rsa.RSAPrivateKey:
+    return _server_private_key
+
+
+def get_server_public_key_pem() -> str:
+    return export_public_key_pem(_server_public_key)

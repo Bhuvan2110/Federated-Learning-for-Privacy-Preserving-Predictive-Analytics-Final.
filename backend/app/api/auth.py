@@ -1,148 +1,141 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.db.models import User, AuditLog
-from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token, public_pem
-from app.api.dependencies import get_current_user
-from pydantic import BaseModel
-from typing import Optional
+"""
+Auth API — Supabase Auth integration, RBAC, rate-limiting, audit logging.
+"""
+from fastapi import APIRouter, HTTPException, Request, Depends, status
+from pydantic import BaseModel, EmailStr
+import httpx
+from app.core.config import get_settings
+from app.core.security import get_server_public_key_pem
+from app.api.dependencies import get_current_user, require_admin
+from app.db.supabase_client import get_supabase
 
-router = APIRouter()
+router = APIRouter(prefix="/auth", tags=["auth"])
+settings = get_settings()
 
-class LoginData(BaseModel):
-    email: str
+# ── Rate Limiting (in-memory for local dev, Redis-backed in prod) ─────────────
+_login_attempts: dict[str, list] = {}
+MAX_ATTEMPTS = 5
+WINDOW_SECONDS = 900  # 15 min
+
+
+def _check_rate_limit(ip: str):
+    import time
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < WINDOW_SECONDS]
+    if len(attempts) >= MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again in 15 minutes.",
+        )
+    attempts.append(now)
+    _login_attempts[ip] = attempts
+
+
+def _log_audit(user_id: str | None, action: str, resource: str, ip: str, detail: dict = None):
+    try:
+        sb = get_supabase()
+        sb.table("audit_logs").insert({
+            "user_id": user_id,
+            "action": action,
+            "resource": resource,
+            "ip": ip,
+            "detail": detail or {},
+        }).execute()
+    except Exception:
+        pass  # Audit log failure must not block the request
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    email: EmailStr
     password: str
 
-class RegisterData(BaseModel):
-    email: str
+
+class SignupRequest(BaseModel):
+    email: EmailStr
     password: str
 
-class GoogleLoginData(BaseModel):
-    email: str
-    google_id: str
-    name: Optional[str] = None
 
-@router.get("/me")
-def get_me(current_user: User = Depends(get_current_user)):
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "role": current_user.role,
-    }
-
-@router.post("/google-login")
-def google_login(data: GoogleLoginData, request: Request, db: Session = Depends(get_db)):
-    """Register or login a user via Google OAuth (ID token verified on frontend)."""
-    # Try to find by google_id first
-    user = db.query(User).filter(User.google_id == data.google_id).first()
-    if not user:
-        # Try by email (link existing account)
-        user = db.query(User).filter(User.email == data.email).first()
-        if user:
-            user.google_id = data.google_id  # type: ignore[assignment]
-            db.commit()
-        else:
-            # Create a new user
-            user = User(
-                email=data.email,
-                google_id=data.google_id,
-                hashed_password=None,
-                role="User",
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-            audit = AuditLog(
-                user_id=user.id,
-                action="google_register",
-                details=f"New user registered via Google: {data.email}",
-                ip_address=request.client.host if request.client else "unknown"
-            )
-            db.add(audit)
-            db.commit()
-
-    access_token = create_access_token(subject=user.id)
-    refresh_token = create_refresh_token(subject=user.id)
-
-    audit = AuditLog(
-        user_id=user.id,
-        action="google_login",
-        details="User logged in via Google",
-        ip_address=request.client.host if request.client else "unknown"
-    )
-    db.add(audit)
-    db.commit()
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "role": user.role,
-        "email": user.email,
-    }
-
-@router.post("/register")
-def register(data: RegisterData, request: Request, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == data.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    hashed = get_password_hash(data.password)
-    user = User(email=data.email, hashed_password=hashed, role="User")
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    audit = AuditLog(
-        user_id=user.id,
-        action="register",
-        details=f"New user registered: {data.email}",
-        ip_address=request.client.host if request.client else "unknown"
-    )
-    db.add(audit)
-    db.commit()
-
-    access_token = create_access_token(subject=user.id)
-    refresh_token = create_refresh_token(subject=user.id)
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "role": user.role,
-        "email": user.email,
-    }
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/login")
-def login(data: LoginData, request: Request, db: Session = Depends(get_db)):
-    # Look up user — use .first() so SQLAlchemy stops at the first match
-    user = db.query(User).filter(User.email == data.email).first()
+async def login(body: LoginRequest, request: Request):
+    """Supabase Auth sign-in with rate limiting."""
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
 
-    # Verify credentials; avoid DB write on failure to keep the hot path fast
-    if not user or not user.hashed_password or not verify_password(data.password, str(user.hashed_password)):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{settings.supabase_url}/auth/v1/token?grant_type=password",
+            json={"email": body.email, "password": body.password},
+            headers={"apikey": settings.supabase_anon_key, "Content-Type": "application/json"},
+            timeout=15,
+        )
 
-    access_token = create_access_token(subject=user.id)
-    refresh_token = create_refresh_token(subject=user.id)
+    if resp.status_code != 200:
+        _log_audit(None, "login_failed", "auth", ip, {"email": body.email})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    # Only audit on success to avoid slow DB writes on every failed attempt
-    audit = AuditLog(
-        user_id=user.id,
-        action="login_success",
-        details="User logged in successfully",
-        ip_address=request.client.host if request.client else "unknown"
-    )
-    db.add(audit)
-    db.commit()
-
+    data = resp.json()
+    _log_audit(data.get("user", {}).get("id"), "login_success", "auth", ip)
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "role": user.role,
-        "email": user.email,
+        "access_token": data.get("access_token"),
+        "refresh_token": data.get("refresh_token"),
+        "user": {
+            "id": data.get("user", {}).get("id"),
+            "email": data.get("user", {}).get("email"),
+            "role": data.get("user", {}).get("app_metadata", {}).get("role", "user"),
+        },
     }
 
-@router.get("/public-key")
-def get_public_key():
-    return {"public_key": public_pem.decode("utf-8")}
+
+@router.post("/signup")
+async def signup(body: SignupRequest, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{settings.supabase_url}/auth/v1/signup",
+            json={"email": body.email, "password": body.password},
+            headers={"apikey": settings.supabase_anon_key, "Content-Type": "application/json"},
+            timeout=15,
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Signup failed")
+    data = resp.json()
+    _log_audit(data.get("id"), "signup", "auth", ip)
+    return {"message": "Check your email to confirm registration"}
+
+
+@router.post("/refresh")
+async def refresh_token(refresh_token: str):
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{settings.supabase_url}/auth/v1/token?grant_type=refresh_token",
+            json={"refresh_token": refresh_token},
+            headers={"apikey": settings.supabase_anon_key, "Content-Type": "application/json"},
+            timeout=15,
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+    data = resp.json()
+    return {"access_token": data.get("access_token"), "refresh_token": data.get("refresh_token")}
+
+
+@router.get("/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    return user
+
+
+@router.get("/security/public-key")
+async def get_public_key():
+    """Server RSA public key for client-side AES key encryption."""
+    return {"public_key": get_server_public_key_pem()}
+
+
+@router.get("/audit-logs")
+async def get_audit_logs(user: dict = Depends(require_admin)):
+    sb = get_supabase()
+    result = sb.table("audit_logs").select("*").order("timestamp", desc=True).limit(200).execute()
+    return result.data

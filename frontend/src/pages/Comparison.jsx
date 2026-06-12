@@ -1,334 +1,305 @@
-import React, { useState, useEffect } from 'react';
-import { GitCompare, ChevronDown, TrendingUp, TrendingDown, Zap, AlertCircle, BarChart2, RefreshCw } from 'lucide-react';
-import { apiFetch, authHeaders } from '../utils/apiFetch';
+import { useState, useEffect } from 'react'
+import { apiFetch } from '../utils/apiFetch'
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend, Cell, RadarChart,
+  PolarGrid, PolarAngleAxis, Radar,
+} from 'recharts'
+import { BarChart3, Download, RefreshCw, AlertCircle, TrendingUp, Shield, Target } from 'lucide-react'
 
-/* ─── helpers ─────────────────────────────────────────────────────────────── */
-const pct = (v) => (v != null ? `${(v * 100).toFixed(1)}%` : '—');
-const fmt = (v) => (v != null ? Number(v).toFixed(4) : '—');
+const ALGO_META = {
+  fedavg:   { color: '#3b82f6', label: 'FedAvg'   },
+  fedprox:  { color: '#8b5cf6', label: 'FedProx'  },
+  scaffold: { color: '#10b981', label: 'SCAFFOLD'  },
+  dpsgd:    { color: '#f43f5e', label: 'FL+DP-SGD' },
+  central:  { color: '#f59e0b', label: 'Central'   },
+}
 
-const ALGO_COLORS = {
-  FedAvg:       { bg: 'rgba(59,130,246,0.15)',  text: '#60a5fa' },
-  FedProx:      { bg: 'rgba(139,92,246,0.15)',  text: '#a78bfa' },
-  SCAFFOLD:     { bg: 'rgba(16,185,129,0.15)',  text: '#34d399' },
-  Centralized:  { bg: 'rgba(245,158,11,0.15)',  text: '#fbbf24' },
-};
-const algoStyle = (a) => ALGO_COLORS[a] || { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8' };
+function MetricBar({ label, compare }) {
+  const data = compare.map(c => ({
+    name: ALGO_META[c.algorithm]?.label || c.algorithm,
+    value: c.metrics?.[label] || 0,
+    color: ALGO_META[c.algorithm]?.color || '#3b82f6',
+  }))
 
-/* ─── Sparkline ───────────────────────────────────────────────────────────── */
-const Sparkline = ({ data = [], color = '#60a5fa', label }) => {
-  if (!data.length) return null;
-  const W = 280, H = 60, pad = 4;
-  const min = Math.min(...data), max = Math.max(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = pad + (i / Math.max(data.length - 1, 1)) * (W - pad * 2);
-    const y = H - pad - ((v - min) / range) * (H - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>{label}</div>
-      <svg width={W} height={H} style={{ display: 'block', borderRadius: 6, background: 'rgba(255,255,255,0.03)' }}>
-        <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      </svg>
+    <div className="glass-card p-4">
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{label.toUpperCase()}</p>
+      <ResponsiveContainer width="100%" height={150}>
+        <BarChart data={data} margin={{ top: 0, right: 10, bottom: 0, left: -20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis domain={[0, 1]} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <Tooltip
+            formatter={(v) => [(v * 100).toFixed(1) + '%', label]}
+            contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }}
+          />
+          <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+            {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
-/* ─── ConfusionMatrix ─────────────────────────────────────────────────────── */
-const ConfusionMatrix = ({ cm }) => {
-  if (!cm) return null;
+function ConfusionMatrix({ cm, algorithm }) {
+  if (!cm) return null
+  const { tp, tn, fp, fn } = cm
   const cells = [
-    { label: 'True Positive',  val: cm.TP, bg: 'rgba(16,185,129,0.25)',  text: '#34d399' },
-    { label: 'False Positive', val: cm.FP, bg: 'rgba(239,68,68,0.18)',   text: '#f87171' },
-    { label: 'False Negative', val: cm.FN, bg: 'rgba(245,158,11,0.18)',  text: '#fbbf24' },
-    { label: 'True Negative',  val: cm.TN, bg: 'rgba(59,130,246,0.18)',  text: '#60a5fa' },
-  ];
+    { label: 'TN', value: tn, bg: 'bg-emerald-500/30', text: 'text-emerald-300' },
+    { label: 'FP', value: fp, bg: 'bg-rose-500/20',    text: 'text-rose-300'    },
+    { label: 'FN', value: fn, bg: 'bg-rose-500/20',    text: 'text-rose-300'    },
+    { label: 'TP', value: tp, bg: 'bg-emerald-500/30', text: 'text-emerald-300' },
+  ]
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-        Confusion Matrix <span style={{ fontWeight: 400, opacity: 0.6 }}>(n={cm.n_samples})</span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
-        {cells.map(({ label, val, bg, text }) => (
-          <div key={label} style={{ background: bg, borderRadius: 8, padding: '10px 12px', border: `1px solid ${text}33` }}>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: text }}>{val}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-        {[
-          { k: 'Precision', v: fmt(cm.precision) },
-          { k: 'Recall',    v: fmt(cm.recall) },
-          { k: 'F1 Score',  v: fmt(cm.f1_score) },
-        ].map(({ k, v }) => (
-          <div key={k} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '8px 10px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{k}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginTop: 2 }}>{v}</div>
+      <p className="text-xs text-slate-500 mb-2">Confusion Matrix — {algorithm}</p>
+      <div className="grid grid-cols-2 gap-1.5 w-40">
+        {cells.map(c => (
+          <div key={c.label} className={`heatmap-cell h-14 flex-col gap-0.5 ${c.bg}`}>
+            <span className={`text-lg ${c.text}`}>{c.value}</span>
+            <span className="text-xs text-slate-500">{c.label}</span>
           </div>
         ))}
       </div>
     </div>
-  );
-};
+  )
+}
 
-/* ─── FeatureImportance ───────────────────────────────────────────────────── */
-const FeatureImportance = ({ features = [], accentColor = '#60a5fa' }) => {
-  if (!features.length) return <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>No feature data.</p>;
-  const top = features.slice(0, 10);
-  const maxVal = top[0]?.importance || 1;
-  return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-        Feature Importance (top {top.length})
-      </div>
-      {top.map(({ feature, importance }, i) => (
-        <div key={feature} style={{ marginBottom: 7 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-            <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
-              {i === 0 && <span style={{ color: accentColor, marginRight: 4 }}>★</span>}{feature}
-            </span>
-            <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{importance.toFixed(4)}</span>
-          </div>
-          <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${(importance / maxVal) * 100}%`, background: accentColor, borderRadius: 3, transition: 'width 0.5s ease' }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/* ─── ExperimentPanel ─────────────────────────────────────────────────────── */
-const ExperimentPanel = ({ side, experiments, selectedId, onSelect, data, loading, accentColor }) => {
-  const ac = algoStyle(data?.experiment?.algorithm);
-  return (
-    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Selector */}
-      <div className="glass" style={{ padding: '16px 20px' }}>
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
-          {side === 'A' ? '⓵' : '⓶'} Select Experiment
-        </label>
-        <div style={{ position: 'relative' }}>
-          <select
-            value={selectedId || ''}
-            onChange={(e) => onSelect(e.target.value ? parseInt(e.target.value) : null)}
-            className="input-field"
-            style={{ background: 'var(--bg-secondary)', marginBottom: 0, paddingRight: 32, appearance: 'none', cursor: 'pointer' }}
-          >
-            <option value="">— choose a completed experiment —</option>
-            {experiments.filter(e => e.status === 'completed').map(e => (
-              <option key={e.id} value={e.id}>#{e.id} · {e.algorithm} · {e.name}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} />
-        </div>
-      </div>
-
-      {loading && (
-        <div className="glass" style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
-          <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite', display: 'inline-block', marginRight: 8 }} />
-          Loading...
-        </div>
-      )}
-
-      {!loading && data && (
-        <>
-          {/* Header card */}
-          <div className="glass" style={{ padding: '16px 20px', borderTop: `3px solid ${accentColor}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>{data.experiment.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {new Date(data.experiment.created_at).toLocaleString()}
-                </div>
-              </div>
-              <span style={{ padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, background: ac.bg, color: ac.text }}>
-                {data.experiment.algorithm}
-              </span>
-            </div>
-
-            {/* Stat cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Final Accuracy</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#34d399' }}>{pct(data.final_metrics?.accuracy)}</div>
-              </div>
-              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Final Loss</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#f87171' }}>{fmt(data.final_metrics?.loss)}</div>
-              </div>
-            </div>
-
-            {/* Config pills */}
-            {data.experiment.config && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {[
-                  ['Rounds', data.experiment.config.rounds],
-                  ['Clients', data.experiment.config.clients],
-                  ['Epochs', data.experiment.config.epochs],
-                  ['LR', data.experiment.config.learning_rate],
-                ].filter(([, v]) => v != null).map(([k, v]) => (
-                  <span key={k} style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-                    {k}: {v}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Training curves */}
-          {data.curves?.loss?.length > 0 && (
-            <div className="glass" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Training Curves</div>
-              <Sparkline data={data.curves.accuracy} color={accentColor} label="Accuracy per round" />
-              <Sparkline data={data.curves.loss} color="#f87171" label="Loss per round" />
-            </div>
-          )}
-
-          {/* Confusion Matrix */}
-          <div className="glass" style={{ padding: '16px 20px' }}>
-            <ConfusionMatrix cm={data.confusion_matrix} />
-          </div>
-
-          {/* Feature Importance */}
-          <div className="glass" style={{ padding: '16px 20px' }}>
-            <FeatureImportance features={data.feature_importance} accentColor={accentColor} />
-          </div>
-        </>
-      )}
-
-      {!loading && !data && selectedId && (
-        <div className="glass" style={{ padding: 24, textAlign: 'center', color: '#f87171', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
-          <AlertCircle size={15} /> Could not load experiment data.
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ─── InsightRow ──────────────────────────────────────────────────────────── */
-const InsightRow = ({ dataA, dataB }) => {
-  if (!dataA && !dataB) return null;
-
-  const insights = [];
-
-  if (dataA && dataB) {
-    const accA = dataA.final_metrics?.accuracy ?? 0;
-    const accB = dataB.final_metrics?.accuracy ?? 0;
-    const winner = accA >= accB ? dataA.experiment : dataB.experiment;
-    const diff = Math.abs(accA - accB) * 100;
-    insights.push(`🏆 Experiment #${winner.id} (${winner.algorithm}) wins by ${diff.toFixed(1)}% accuracy.`);
-  }
-
-  // Top feature recommendation from the best (or only available) model
-  const best = (dataA?.final_metrics?.accuracy ?? 0) >= (dataB?.final_metrics?.accuracy ?? 0) ? dataA : dataB;
-  if (best?.feature_importance?.length) {
-    const top3 = best.feature_importance.slice(0, 3).map(f => `"${f.feature}"`).join(', ');
-    insights.push(`📌 Top influential features: ${top3}. Prioritising these in data collection or engineering may improve accuracy.`);
-  }
-
-  if (dataA?.experiment?.algorithm !== dataB?.experiment?.algorithm && dataA && dataB) {
-    insights.push(`💡 Try ${dataA.experiment.algorithm === 'FedAvg' ? 'FedProx' : 'FedAvg'} with more rounds to see if convergence improves.`);
-  }
-
-  if (!insights.length) return null;
+function ConvergenceChart({ compare }) {
+  const allRounds = new Set(compare.flatMap(c => (c.rounds || []).map(r => r.round_num)))
+  const maxRound = Math.max(...allRounds, 0)
+  const data = Array.from({ length: maxRound }, (_, i) => {
+    const row = { round: i + 1 }
+    compare.forEach(c => {
+      const rd = (c.rounds || []).find(r => r.round_num === i + 1)
+      if (rd) row[ALGO_META[c.algorithm]?.label || c.algorithm] = rd.val_accuracy ?? rd.accuracy
+    })
+    return row
+  })
 
   return (
-    <div className="glass animate-fade-in" style={{ padding: '20px 24px', marginTop: 24, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.06)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Zap size={16} color="#818cf8" />
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#818cf8' }}>AI Insights & Recommendations</span>
-      </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {insights.map((t, i) => (
-          <li key={i} style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, padding: '8px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-            {t}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-};
-
-/* ─── Comparison page ─────────────────────────────────────────────────────── */
-const Comparison = () => {
-  const [experiments, setExperiments] = useState([]);
-  const [loadingList, setLoadingList] = useState(true);
-
-  const [selA, setSelA] = useState(null);
-  const [selB, setSelB] = useState(null);
-  const [dataA, setDataA] = useState(null);
-  const [dataB, setDataB] = useState(null);
-  const [loadA, setLoadA] = useState(false);
-  const [loadB, setLoadB] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiFetch('/api/training/compare', { headers: authHeaders() });
-        const json = await res.json();
-        setExperiments(json.experiments || []);
-      } catch (_) {}
-      setLoadingList(false);
-    })();
-  }, []);
-
-  const fetchDetail = async (id, setData, setLoad) => {
-    if (!id) { setData(null); return; }
-    setLoad(true);
-    setData(null);
-    try {
-      const res = await apiFetch(`/api/training/compare/detail/${id}`, { headers: authHeaders() });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.detail);
-      setData(json);
-    } catch (_) { setData(null); }
-    setLoad(false);
-  };
-
-  const handleSelectA = (id) => { setSelA(id); fetchDetail(id, setDataA, setLoadA); };
-  const handleSelectB = (id) => { setSelB(id); fetchDetail(id, setDataB, setLoadB); };
-
-  const completedCount = experiments.filter(e => e.status === 'completed').length;
-
-  return (
-    <div className="animate-fade-in">
-      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-        <GitCompare size={22} color="var(--accent-primary)" />
-        <h1 style={{ fontSize: 'clamp(20px,4vw,24px)', fontWeight: 'bold' }}>Model Comparison</h1>
-      </div>
-      <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 28 }}>
-        Select two completed experiments to compare their training results, confusion matrices, and feature importance side-by-side.
+    <div className="glass-card p-5">
+      <p className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
+        <TrendingUp size={14} className="text-brand-400" /> Convergence Curves
       </p>
+      {data.length === 0 ? (
+        <p className="text-slate-500 text-sm text-center py-8">No round data available</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={data} margin={{ top: 0, right: 15, bottom: 0, left: -20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+            <XAxis dataKey="round" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} />
+            <YAxis domain={[0, 1]} tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} />
+            <Tooltip
+              contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }}
+            />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+            {compare.map(c => (
+              <Line key={c.algorithm} type="monotone" dataKey={ALGO_META[c.algorithm]?.label || c.algorithm}
+                stroke={ALGO_META[c.algorithm]?.color || '#3b82f6'} strokeWidth={2} dot={false} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
+}
 
-      {loadingList ? (
-        <div style={{ color: 'var(--text-secondary)', fontSize: 13, padding: 24 }}>Loading experiments…</div>
-      ) : completedCount === 0 ? (
-        <div className="glass" style={{ padding: 32, textAlign: 'center' }}>
-          <BarChart2 size={32} color="var(--text-secondary)" style={{ marginBottom: 12 }} />
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>No completed experiments yet.</p>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 6 }}>Head to the <strong>Training</strong> page and start a training run first.</p>
+function FeatureImportanceChart({ compare }) {
+  const first = compare.find(c => c.metrics?.feature_importance?.length > 0)
+  if (!first) return null
+  const fi = (first.metrics.feature_importance || []).slice(0, 10)
+  return (
+    <div className="glass-card p-5">
+      <p className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
+        <Target size={14} className="text-brand-400" /> Feature Importance ({ALGO_META[first.algorithm]?.label})
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart layout="vertical" data={fi} margin={{ top: 0, right: 20, bottom: 0, left: 60 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+          <XAxis type="number" domain={[0, 1]} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis type="category" dataKey="feature" tick={{ fontSize: 10, fill: '#94a3b8' }} width={60} />
+          <Tooltip
+            formatter={(v) => [(v * 100).toFixed(1) + '%', 'Importance']}
+            contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }}
+          />
+          <Bar dataKey="importance" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function PrivacyUtilityChart({ privacyCurve }) {
+  if (!privacyCurve?.length) return null
+  return (
+    <div className="glass-card p-5">
+      <p className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
+        <Shield size={14} className="text-rose-400" /> Privacy-Utility Tradeoff
+        <span className="text-xs text-slate-500 ml-1">(accuracy vs ε)</span>
+      </p>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={privacyCurve} margin={{ top: 0, right: 15, bottom: 0, left: -20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="epsilon" label={{ value: 'ε (epsilon)', position: 'insideBottom', fontSize: 10, fill: '#64748b' }} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <Tooltip contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+          <Line type="monotone" dataKey="accuracy" stroke="#f43f5e" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e' }} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+export default function Comparison() {
+  const [compare, setCompare] = useState([])
+  const [privacyCurve, setPrivacyCurve] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [cmp, puc] = await Promise.all([
+        apiFetch('/training/compare'),
+        apiFetch('/metrics/privacy-utility').catch(() => []),
+      ])
+      setCompare(Array.isArray(cmp) ? cmp : [])
+      setPrivacyCurve(Array.isArray(puc) ? puc : [])
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const exportMetrics = () => {
+    const data = compare.map(c => ({
+      algorithm: c.algorithm,
+      accuracy: c.metrics?.accuracy,
+      f1: c.metrics?.f1,
+      auc: c.metrics?.auc,
+      precision: c.metrics?.precision_score,
+      recall: c.metrics?.recall,
+      final_epsilon: c.final_epsilon,
+    }))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'fl_metrics.json'
+    a.click()
+  }
+
+  return (
+    <div className="page-wrapper">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="page-title">Model Comparison</h1>
+          <p className="page-subtitle">Side-by-side comparison of all 5 FL algorithms</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={load} className="btn-secondary text-xs">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+          {compare.length > 0 && (
+            <button onClick={exportMetrics} className="btn-secondary text-xs">
+              <Download size={13} /> Export JSON
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="glass-card p-4 mb-6 flex items-center gap-3 text-red-400 border border-red-500/30">
+          <AlertCircle size={15} />
+          <span className="text-sm">{error}</span>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-20 text-slate-500 text-sm animate-pulse">Loading comparison data…</div>
+      ) : compare.length === 0 ? (
+        <div className="glass-card p-16 text-center">
+          <BarChart3 size={40} className="text-slate-700 mx-auto mb-4" />
+          <p className="text-slate-500">No completed experiments yet</p>
+          <p className="text-slate-600 text-sm mt-1">Run at least one training job to see comparisons</p>
         </div>
       ) : (
-        <>
-          {/* Side-by-side panels */}
-          <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <ExperimentPanel side="A" experiments={experiments} selectedId={selA} onSelect={handleSelectA} data={dataA} loading={loadA} accentColor="#60a5fa" />
-            {/* Divider */}
-            <div style={{ width: 1, background: 'var(--border-color)', alignSelf: 'stretch', flexShrink: 0, display: 'none' }} className="compare-divider" />
-            <ExperimentPanel side="B" experiments={experiments} selectedId={selB} onSelect={handleSelectB} data={dataB} loading={loadB} accentColor="#a78bfa" />
+        <div className="space-y-6">
+          {/* Metric bars */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {['accuracy', 'f1', 'auc', 'precision_score'].map(m => (
+              <MetricBar key={m} label={m} compare={compare} />
+            ))}
           </div>
 
-          {/* Insights */}
-          <InsightRow dataA={dataA} dataB={dataB} />
-        </>
+          {/* Convergence + Feature Importance */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <ConvergenceChart compare={compare} />
+            <FeatureImportanceChart compare={compare} />
+          </div>
+
+          {/* Confusion matrices */}
+          <div className="glass-card p-5">
+            <p className="text-sm font-semibold text-slate-200 mb-4">Confusion Matrices</p>
+            <div className="flex flex-wrap gap-8">
+              {compare.map(c => (
+                <ConfusionMatrix key={c.experiment_id} cm={c.metrics?.confusion_matrix} algorithm={ALGO_META[c.algorithm]?.label || c.algorithm} />
+              ))}
+            </div>
+          </div>
+
+          {/* Privacy-utility */}
+          <PrivacyUtilityChart privacyCurve={privacyCurve} />
+
+          {/* Summary table */}
+          <div className="glass-card overflow-x-auto">
+            <div className="px-5 py-4 border-b border-white/10">
+              <p className="text-sm font-semibold text-slate-200">Performance Summary</p>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Algorithm</th>
+                  <th>Accuracy</th>
+                  <th>F1</th>
+                  <th>AUC</th>
+                  <th>Precision</th>
+                  <th>Recall</th>
+                  <th>Final ε</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compare.map(c => {
+                  const m = c.metrics || {}
+                  const meta = ALGO_META[c.algorithm] || { label: c.algorithm }
+                  return (
+                    <tr key={c.experiment_id}>
+                      <td>
+                        <span className={`badge-${c.algorithm}`}>{meta.label}</span>
+                      </td>
+                      {['accuracy', 'f1', 'auc', 'precision_score', 'recall'].map(k => (
+                        <td key={k} className="font-mono text-slate-200">
+                          {m[k] !== undefined ? `${(m[k] * 100).toFixed(1)}%` : '—'}
+                        </td>
+                      ))}
+                      <td className="font-mono text-rose-400">
+                        {c.final_epsilon ? c.final_epsilon.toFixed(3) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
-  );
-};
-
-export default Comparison;
+  )
+}
