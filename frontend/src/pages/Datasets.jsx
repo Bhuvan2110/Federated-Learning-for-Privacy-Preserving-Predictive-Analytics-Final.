@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { apiUpload, apiFetch } from '../utils/apiFetch'
 import { Upload, Database, Eye, Trash2, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 
@@ -39,7 +39,7 @@ export default function Datasets() {
     }
   }, [])
 
-  useState(() => { loadDatasets() }, [])
+  useEffect(() => { loadDatasets() }, [])
 
   const handleFile = async (file) => {
     if (!file) return

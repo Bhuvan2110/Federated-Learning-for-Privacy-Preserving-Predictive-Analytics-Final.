@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabaseClient'
-import { setAuthToken } from './utils/apiFetch'
+import { setAuthToken, wakeBackend } from './utils/apiFetch'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -16,6 +16,9 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Wake the backend from Render free-tier sleep (runs in parallel with auth check)
+    wakeBackend()
+
     // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {

@@ -63,6 +63,7 @@ export default function Dashboard() {
   const load = async () => {
     try {
       setLoading(true)
+      setError(null)
       const [exps, cmp] = await Promise.all([
         apiFetch('/training/list'),
         apiFetch('/training/compare'),
@@ -105,9 +106,16 @@ export default function Dashboard() {
       </div>
 
       {error && (
-        <div className="glass-card p-4 mb-6 flex items-center gap-3 text-red-400 border border-red-500/30">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
+        <div className="glass-card p-4 mb-6 flex items-center justify-between gap-3 border border-red-500/30">
+          <div className="flex items-center gap-3 text-red-400">
+            <AlertCircle size={16} className="flex-shrink-0" />
+            <span className="text-sm">
+              {error.includes('waking') || error.includes('Cannot reach') || error.includes('timed out')
+                ? '⏳ Backend is waking up from sleep — please retry in a moment.'
+                : error}
+            </span>
+          </div>
+          <button onClick={load} className="btn-secondary text-xs shrink-0">Retry</button>
         </div>
       )}
 
