@@ -1,6 +1,9 @@
 # Environment variables
 .env
-*.env
+.env.local
+.env.*.local
+# Allow .env.production (contains only public VITE_ vars, no secrets)
+!.env.production
 
 # Python
 __pycache__/
