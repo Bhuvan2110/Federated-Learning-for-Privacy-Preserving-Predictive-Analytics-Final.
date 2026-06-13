@@ -40,10 +40,10 @@ async def get_current_user(
         }
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail=f"Could not validate credentials: {str(e)} (URL: {settings.supabase_url})",
         )
 
 
