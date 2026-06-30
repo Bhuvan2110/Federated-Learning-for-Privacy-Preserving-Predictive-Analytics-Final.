@@ -3,7 +3,7 @@ services:
     name: fl-platform-api
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: celery -A app.tasks.celery_app.celery_app worker --loglevel=info & uvicorn app.main:app --host 0.0.0.0 --port $PORT
     rootDir: backend
     plan: free
     envVars:
@@ -29,41 +29,16 @@ services:
       - key: CORS_ORIGINS
         value: "https://fl-platform-ui-8vqt.onrender.com,http://localhost:5173"
 
-  - type: worker
-    name: fl-celery-worker
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
-    rootDir: backend
+  - type: redis
+    name: fl-redis
     plan: free
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SECRET_KEY
-        generateValue: true
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: fl-redis
-          property: connectionString
-      - key: MLFLOW_TRACKING_URI
-        value: http://localhost:5000
-      - key: ENVIRONMENT
-        value: production
+    ipAllowList: []
 
-  - type: web
+  - type: static
     name: fl-platform-ui
-    runtime: static
     rootDir: frontend
     buildCommand: npm ci && VITE_API_URL=https://fl-platform-api-kg2m.onrender.com VITE_SUPABASE_URL=https://gxrnjyurzoegbhljkyda.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4cm5qeXVyem9lZ2JobGpreWRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkxMTU1MDQsImV4cCI6MjA2NDY5MTUwNH0.H0aqFgQ0CtHZuLPpJjxarQb18hKS8W0_Ggwj0V_t5ck npm run build
-    staticPublishPath: dist
-    plan: free
+    publishPath: dist
     headers:
       - path: /*
         name: Strict-Transport-Security
@@ -84,8 +59,3 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
-
-  - type: redis
-    name: fl-redis
-    plan: free
-    ipAllowList: []
