@@ -34,11 +34,12 @@ services:
     plan: free
     ipAllowList: []
 
-  - type: static
+  - type: web
     name: fl-platform-ui
+    runtime: static
     rootDir: frontend
     buildCommand: npm ci && VITE_API_URL=https://fl-platform-api-kg2m.onrender.com VITE_SUPABASE_URL=https://gxrnjyurzoegbhljkyda.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4cm5qeXVyem9lZ2JobGpreWRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkxMTU1MDQsImV4cCI6MjA2NDY5MTUwNH0.H0aqFgQ0CtHZuLPpJjxarQb18hKS8W0_Ggwj0V_t5ck npm run build
-    publishPath: dist
+    staticPublishPath: dist
     headers:
       - path: /*
         name: Strict-Transport-Security
