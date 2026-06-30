@@ -36,3 +36,4 @@ services:
   - type: redis
     name: fl-redis
     plan: free
+    ipAllowList: []
