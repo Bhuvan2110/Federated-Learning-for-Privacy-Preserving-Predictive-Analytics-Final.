@@ -28,26 +28,11 @@ services:
         value: production
       - key: CORS_ORIGINS
         value: "https://fl-platform-ui.onrender.com,http://localhost:5173"
-
   - type: web
     name: fl-platform-ui
     runtime: static
     buildCommand: npm ci && VITE_API_URL=https://fl-platform-api.onrender.com VITE_SUPABASE_URL=https://gxrnjyurzoegbhljkyda.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_lT0PKVxLMX84loUUarMeyw_Vzw5R93- npm run build
     staticPublishPath: dist
-    rootDir: frontend
-    headers:
-      - path: /*
-        name: Strict-Transport-Security
-        value: max-age=31536000; includeSubDomains
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-      - path: /*
-        name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.onrender.com wss://*.onrender.com https://fl-platform-api.onrender.com;"
+  - type: redis
+    name: fl-redis
+    plan: free
