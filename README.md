@@ -3,6 +3,11 @@
 > Full-stack research platform implementing 5 ML algorithms from mathematical first principles.
 > **Zero external ML libraries** — pure Python for all FL algorithms.
 
+## Live Deployment
+
+- **Frontend App (Web UI)**: [https://fl-platform-ui-8vqt.onrender.com](https://fl-platform-ui-8vqt.onrender.com)
+- **Backend API Documentation**: [https://fl-platform-api-kg2m.onrender.com/docs](https://fl-platform-api-kg2m.onrender.com/docs)
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -120,11 +125,16 @@ pytest tests/ --cov=app --cov-report=term-missing -v
 
 ## Deployment — Render
 
+The project is hosted on Render via Blueprint:
+- **Frontend App (Web UI)**: [https://fl-platform-ui-8vqt.onrender.com](https://fl-platform-ui-8vqt.onrender.com)
+- **Backend API**: [https://fl-platform-api-kg2m.onrender.com](https://fl-platform-api-kg2m.onrender.com)
+
 1. Push to GitHub
 2. Connect repo to Render
 3. `render.yaml` auto-configures all services
 4. Set env vars in Render dashboard
 5. GitHub Actions deploys on push to `main`
+
 
 ## Security
 
