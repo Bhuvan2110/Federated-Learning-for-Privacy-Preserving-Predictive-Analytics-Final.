@@ -34,7 +34,7 @@ export function stopKeepAlive() {
   }
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 65000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -50,7 +50,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 65000) {
 }
 
 // Retry up to `maxRetries` times, waiting `delayMs` between attempts
-export async function apiFetch(path, options = {}, maxRetries = 3, delayMs = 10000) {
+export async function apiFetch(path, options = {}, maxRetries = 4, delayMs = 3000) {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -83,7 +83,7 @@ export async function apiFetch(path, options = {}, maxRetries = 3, delayMs = 100
   throw lastErr
 }
 
-export async function apiUpload(path, formData, maxRetries = 3, delayMs = 10000) {
+export async function apiUpload(path, formData, maxRetries = 4, delayMs = 3000) {
   const headers = {}
   if (_token) headers['Authorization'] = `Bearer ${_token}`
 
