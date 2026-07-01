@@ -9,7 +9,6 @@ import Datasets from './pages/Datasets'
 import Training from './pages/Training'
 import Predict from './pages/Predict'
 import Comparison from './pages/Comparison'
-import Security from './pages/Security'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -94,7 +93,6 @@ export default function App() {
             <Route path="/training"  element={<Training />} />
             <Route path="/predict"   element={<Predict />} />
             <Route path="/compare"   element={<Comparison />} />
-            <Route path="/security"  element={<Security />} />
             <Route path="*"          element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>

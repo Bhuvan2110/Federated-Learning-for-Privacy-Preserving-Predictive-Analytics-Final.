@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Database, Brain, Zap, BarChart3,
-  Shield, LogOut, Lock, ChevronRight
+  LogOut, Lock, ChevronRight
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { to: '/training',  icon: Brain,            label: 'Training'  },
   { to: '/predict',   icon: Zap,              label: 'Predict'   },
   { to: '/compare',   icon: BarChart3,        label: 'Compare'   },
-  { to: '/security',  icon: Shield,           label: 'Security'  },
 ]
 
 export default function Sidebar({ user, onLogout }) {
