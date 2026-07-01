@@ -74,9 +74,9 @@ async def compare_experiments(user: dict = Depends(get_current_user)):
     sb = get_supabase()
 
     if user.get("role") in ("admin", "super_admin"):
-        exps = sb.table("experiments").select("id, algorithm, status").eq("status", "completed").execute()
+        exps = sb.table("experiments").select("id, algorithm, status, created_at, datasets(filename)").eq("status", "completed").execute()
     else:
-        exps = sb.table("experiments").select("id, algorithm, status").eq("user_id", user["id"]).eq("status", "completed").execute()
+        exps = sb.table("experiments").select("id, algorithm, status, created_at, datasets(filename)").eq("user_id", user["id"]).eq("status", "completed").execute()
 
     results = []
     for exp in exps.data:
@@ -87,6 +87,8 @@ async def compare_experiments(user: dict = Depends(get_current_user)):
             results.append({
                 "experiment_id": exp["id"],
                 "algorithm": exp["algorithm"],
+                "created_at": exp.get("created_at"),
+                "dataset_filename": exp.get("datasets", {}).get("filename") if exp.get("datasets") else None,
                 "metrics": metrics.data,
                 "rounds": rounds.data,
                 "privacy_budget": pb.data,

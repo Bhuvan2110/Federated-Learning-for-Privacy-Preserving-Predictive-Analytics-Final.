@@ -1,9 +1,11 @@
+
+
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/apiFetch'
 import LiveChart from '../components/LiveChart'
 import {
   Brain, Play, Settings, AlertCircle, Loader2,
-  CheckCircle2, Clock, ChevronDown, ChevronUp, Shield
+  CheckCircle2, Clock, ChevronDown, ChevronUp, Shield, RefreshCw
 } from 'lucide-react'
 
 const ALGORITHMS = [
@@ -24,6 +26,7 @@ const COLOR_MAP = {
 
 export default function Training() {
   const [datasets, setDatasets] = useState([])
+  const [experiments, setExperiments] = useState([])
   const [algorithm, setAlgorithm] = useState('fedavg')
   const [config, setConfig] = useState({
     dataset_id: '', n_rounds: 20, lr: 0.01, n_clients: 5, local_epochs: 5,
@@ -34,12 +37,26 @@ export default function Training() {
   const [activeExp, setActiveExp] = useState(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
+  const loadExperiments = () => {
+    apiFetch('/training/list')
+      .then(data => setExperiments(Array.isArray(data) ? data : []))
+      .catch(() => {})
+  }
+
   useEffect(() => {
     apiFetch('/dataset/list').then(data => {
       setDatasets(Array.isArray(data) ? data : [])
       if (data.length > 0) setConfig(c => ({ ...c, dataset_id: data[0].id }))
     }).catch(() => {})
+    loadExperiments()
   }, [])
+
+  useEffect(() => {
+    const hasActive = experiments.some(e => e.status === 'pending' || e.status === 'running')
+    if (!hasActive) return
+    const interval = setInterval(loadExperiments, 5000)
+    return () => clearInterval(interval)
+  }, [experiments])
 
   const handleStart = async () => {
     if (!config.dataset_id) { setError('Select a dataset'); return }
@@ -51,10 +68,24 @@ export default function Training() {
         body: JSON.stringify({ algorithm, ...config }),
       })
       setActiveExp({ id: result.experiment_id, algorithm })
+      loadExperiments()
     } catch (e) {
       setError(e.message)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Are you sure you want to delete this experiment?')) return
+    try {
+      await apiFetch(`/training/${id}`, { method: 'DELETE' })
+      loadExperiments()
+      if (activeExp && activeExp.id === id) {
+        setActiveExp(null)
+      }
+    } catch (e) {
+      alert(e.message)
     }
   }
 
@@ -215,6 +246,79 @@ export default function Training() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Recent Experiments / Trained Results */}
+      <div className="glass-card mt-6">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-200">Recent Experiments</h2>
+          <button onClick={loadExperiments} className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
+            <RefreshCw size={12} /> Refresh
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Date/Time</th>
+                <th>Algorithm</th>
+                <th>Dataset</th>
+                <th>Rounds</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {experiments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-6 text-slate-500 text-sm">
+                    No experiments found. Start a training session above!
+                  </td>
+                </tr>
+              ) : (
+                experiments.map(exp => (
+                  <tr key={exp.id}>
+                    <td className="text-slate-400 text-xs font-mono">
+                      {new Date(exp.created_at).toLocaleString()}
+                    </td>
+                    <td>
+                      <span className={`badge-${exp.algorithm}`}>
+                        {ALGORITHMS.find(a => a.value === exp.algorithm)?.label || exp.algorithm}
+                      </span>
+                    </td>
+                    <td className="text-slate-300 text-sm">
+                      {exp.datasets?.filename || 'Unknown'}
+                    </td>
+                    <td className="text-slate-400 font-mono text-xs">
+                      {exp.hyperparams?.n_rounds || '—'}
+                    </td>
+                    <td>
+                      <span className={`badge-${exp.status}`}>
+                        {exp.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setActiveExp({ id: exp.id, algorithm: exp.algorithm })}
+                          className="px-2 py-1 rounded bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 text-xs font-medium transition-colors"
+                        >
+                          View Progress
+                        </button>
+                        <button
+                          onClick={() => handleDelete(exp.id)}
+                          className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

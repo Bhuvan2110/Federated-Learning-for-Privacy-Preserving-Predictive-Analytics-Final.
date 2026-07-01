@@ -15,9 +15,14 @@ const ALGO_META = {
   central:  { color: '#f59e0b', label: 'Central'   },
 }
 
+const getExpLabel = (c) => {
+  const shortId = c.experiment_id ? c.experiment_id.slice(0, 4) : ''
+  return `${ALGO_META[c.algorithm]?.label || c.algorithm} (${shortId})`
+}
+
 function MetricBar({ label, compare }) {
   const data = compare.map(c => ({
-    name: ALGO_META[c.algorithm]?.label || c.algorithm,
+    name: getExpLabel(c),
     value: c.metrics?.[label] || 0,
     color: ALGO_META[c.algorithm]?.color || '#3b82f6',
   }))
@@ -74,7 +79,7 @@ function ConvergenceChart({ compare }) {
     const row = { round: i + 1 }
     compare.forEach(c => {
       const rd = (c.rounds || []).find(r => r.round_num === i + 1)
-      if (rd) row[ALGO_META[c.algorithm]?.label || c.algorithm] = rd.val_accuracy ?? rd.accuracy
+      if (rd) row[getExpLabel(c)] = rd.val_accuracy ?? rd.accuracy
     })
     return row
   })
@@ -97,7 +102,7 @@ function ConvergenceChart({ compare }) {
             />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
             {compare.map(c => (
-              <Line key={c.algorithm} type="monotone" dataKey={ALGO_META[c.algorithm]?.label || c.algorithm}
+              <Line key={c.experiment_id} type="monotone" dataKey={getExpLabel(c)}
                 stroke={ALGO_META[c.algorithm]?.color || '#3b82f6'} strokeWidth={2} dot={false} />
             ))}
           </LineChart>
@@ -114,7 +119,7 @@ function FeatureImportanceChart({ compare }) {
   return (
     <div className="glass-card p-5">
       <p className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
-        <Target size={14} className="text-brand-400" /> Feature Importance ({ALGO_META[first.algorithm]?.label})
+        <Target size={14} className="text-brand-400" /> Feature Importance ({getExpLabel(first)})
       </p>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart layout="vertical" data={fi} margin={{ top: 0, right: 20, bottom: 0, left: 60 }}>
@@ -155,6 +160,7 @@ function PrivacyUtilityChart({ privacyCurve }) {
 
 export default function Comparison() {
   const [compare, setCompare] = useState([])
+  const [selectedExpIds, setSelectedExpIds] = useState([])
   const [privacyCurve, setPrivacyCurve] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -167,8 +173,10 @@ export default function Comparison() {
         apiFetch('/training/compare'),
         apiFetch('/metrics/privacy-utility').catch(() => []),
       ])
-      setCompare(Array.isArray(cmp) ? cmp : [])
+      const cmpData = Array.isArray(cmp) ? cmp : []
+      setCompare(cmpData)
       setPrivacyCurve(Array.isArray(puc) ? puc : [])
+      setSelectedExpIds(cmpData.map(c => c.experiment_id))
     } catch (e) {
       setError(e.message)
     } finally {
@@ -179,7 +187,8 @@ export default function Comparison() {
   useEffect(() => { load() }, [])
 
   const exportMetrics = () => {
-    const data = compare.map(c => ({
+    const activeCompare = compare.filter(c => selectedExpIds.includes(c.experiment_id))
+    const data = activeCompare.map(c => ({
       algorithm: c.algorithm,
       accuracy: c.metrics?.accuracy,
       f1: c.metrics?.f1,
@@ -196,6 +205,8 @@ export default function Comparison() {
     a.click()
   }
 
+  const activeCompare = compare.filter(c => selectedExpIds.includes(c.experiment_id))
+
   return (
     <div className="page-wrapper">
       <div className="flex items-center justify-between mb-6">
@@ -207,7 +218,7 @@ export default function Comparison() {
           <button onClick={load} className="btn-secondary text-xs">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
-          {compare.length > 0 && (
+          {activeCompare.length > 0 && (
             <button onClick={exportMetrics} className="btn-secondary text-xs">
               <Download size={13} /> Export JSON
             </button>
@@ -232,72 +243,135 @@ export default function Comparison() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Metric bars */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {['accuracy', 'f1', 'auc', 'precision_score'].map(m => (
-              <MetricBar key={m} label={m} compare={compare} />
-            ))}
-          </div>
-
-          {/* Convergence + Feature Importance */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <ConvergenceChart compare={compare} />
-            <FeatureImportanceChart compare={compare} />
-          </div>
-
-          {/* Confusion matrices */}
+          {/* Selection card */}
           <div className="glass-card p-5">
-            <p className="text-sm font-semibold text-slate-200 mb-4">Confusion Matrices</p>
-            <div className="flex flex-wrap gap-8">
-              {compare.map(c => (
-                <ConfusionMatrix key={c.experiment_id} cm={c.metrics?.confusion_matrix} algorithm={ALGO_META[c.algorithm]?.label || c.algorithm} />
-              ))}
+            <h2 className="text-sm font-semibold text-slate-200 mb-3">Select Experiments to Compare</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {compare.map(c => {
+                const isSelected = selectedExpIds.includes(c.experiment_id)
+                const dateStr = c.created_at ? new Date(c.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : ''
+                return (
+                  <label
+                    key={c.experiment_id}
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
+                      ${isSelected ? 'bg-brand-600/10 border-brand-500/40' : 'border-white/5 hover:border-white/15 hover:bg-white/3'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedExpIds(prev =>
+                          prev.includes(c.experiment_id)
+                            ? prev.filter(id => id !== c.experiment_id)
+                            : [...prev, c.experiment_id]
+                        )
+                      }}
+                      className="mt-1 accent-brand-500 rounded"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`badge-${c.algorithm}`}>
+                          {ALGO_META[c.algorithm]?.label || c.algorithm}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {c.experiment_id.slice(0, 5)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 truncate">
+                        Dataset: {c.dataset_filename || 'Unknown'}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {dateStr}
+                      </p>
+                    </div>
+                  </label>
+                )
+              })}
             </div>
           </div>
 
-          {/* Privacy-utility */}
-          <PrivacyUtilityChart privacyCurve={privacyCurve} />
-
-          {/* Summary table */}
-          <div className="glass-card overflow-x-auto">
-            <div className="px-5 py-4 border-b border-white/10">
-              <p className="text-sm font-semibold text-slate-200">Performance Summary</p>
+          {activeCompare.length === 0 ? (
+            <div className="glass-card p-12 text-center text-slate-500 text-sm">
+              Please select at least one experiment above to display comparison details
             </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Algorithm</th>
-                  <th>Accuracy</th>
-                  <th>F1</th>
-                  <th>AUC</th>
-                  <th>Precision</th>
-                  <th>Recall</th>
-                  <th>Final ε</th>
-                </tr>
-              </thead>
-              <tbody>
-                {compare.map(c => {
-                  const m = c.metrics || {}
-                  const meta = ALGO_META[c.algorithm] || { label: c.algorithm }
-                  return (
-                    <tr key={c.experiment_id}>
-                      <td>
-                        <span className={`badge-${c.algorithm}`}>{meta.label}</span>
-                      </td>
-                      {['accuracy', 'f1', 'auc', 'precision_score', 'recall'].map(k => (
-                        <td key={k} className="font-mono text-slate-200">
-                          {m[k] !== undefined ? `${(m[k] * 100).toFixed(1)}%` : '—'}
-                        </td>
-                      ))}
-                      <td className="font-mono text-rose-400">
-                        {c.final_epsilon ? c.final_epsilon.toFixed(3) : '—'}
-                      </td>
+          ) : (
+            <>
+              {/* Metric bars */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {['accuracy', 'f1', 'auc', 'precision_score'].map(m => (
+                  <MetricBar key={m} label={m} compare={activeCompare} />
+                ))}
+              </div>
+
+              {/* Convergence + Feature Importance */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <ConvergenceChart compare={activeCompare} />
+                <FeatureImportanceChart compare={activeCompare} />
+              </div>
+
+              {/* Confusion matrices */}
+              <div className="glass-card p-5">
+                <p className="text-sm font-semibold text-slate-200 mb-4">Confusion Matrices</p>
+                <div className="flex flex-wrap gap-8">
+                  {activeCompare.map(c => (
+                    <ConfusionMatrix key={c.experiment_id} cm={c.metrics?.confusion_matrix} algorithm={getExpLabel(c)} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Privacy-utility */}
+              <PrivacyUtilityChart privacyCurve={privacyCurve} />
+
+              {/* Summary table */}
+              <div className="glass-card overflow-x-auto">
+                <div className="px-5 py-4 border-b border-white/10">
+                  <p className="text-sm font-semibold text-slate-200">Performance Summary</p>
+                </div>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Algorithm</th>
+                      <th>Experiment ID</th>
+                      <th>Dataset</th>
+                      <th>Accuracy</th>
+                      <th>F1</th>
+                      <th>AUC</th>
+                      <th>Precision</th>
+                      <th>Recall</th>
+                      <th>Final ε</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {activeCompare.map(c => {
+                      const m = c.metrics || {}
+                      const meta = ALGO_META[c.algorithm] || { label: c.algorithm }
+                      return (
+                        <tr key={c.experiment_id}>
+                          <td>
+                            <span className={`badge-${c.algorithm}`}>{meta.label}</span>
+                          </td>
+                          <td className="font-mono text-slate-400 text-xs">
+                            {c.experiment_id.slice(0, 8)}...
+                          </td>
+                          <td className="text-slate-300 text-xs">
+                            {c.dataset_filename || '—'}
+                          </td>
+                          {['accuracy', 'f1', 'auc', 'precision_score', 'recall'].map(k => (
+                            <td key={k} className="font-mono text-slate-200">
+                              {m[k] !== undefined ? `${(m[k] * 100).toFixed(1)}%` : '—'}
+                            </td>
+                          ))}
+                          <td className="font-mono text-rose-400">
+                            {c.final_epsilon ? c.final_epsilon.toFixed(3) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
