@@ -15,6 +15,10 @@ const NAV_ITEMS = [
 export default function Sidebar({ user, onLogout }) {
   const location = useLocation()
 
+  // Display name: prefer Google name, fallback to email
+  const displayName = user?.name || user?.email?.split('@')[0] || 'User'
+  const avatarUrl = user?.avatar || null
+
   return (
     <aside className="w-64 flex-shrink-0 flex flex-col bg-surface-800/80 backdrop-blur-md border-r border-white/10 h-screen sticky top-0">
       {/* Logo */}
@@ -65,12 +69,21 @@ export default function Sidebar({ user, onLogout }) {
       {/* User */}
       <div className="px-4 py-4 border-t border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-            {user?.email?.[0]?.toUpperCase() || 'U'}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              className="w-8 h-8 rounded-full flex-shrink-0 object-cover border border-white/20"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+              {displayName[0]?.toUpperCase() || 'U'}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-slate-200 truncate">{user?.email || 'User'}</p>
-            <p className="text-xs text-slate-500 capitalize">{user?.role || 'user'}</p>
+            <p className="text-xs font-medium text-slate-200 truncate">{displayName}</p>
+            <p className="text-xs text-slate-500 truncate">{user?.email || ''}</p>
           </div>
           <button
             onClick={onLogout}

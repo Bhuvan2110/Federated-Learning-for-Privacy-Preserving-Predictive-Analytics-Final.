@@ -1,5 +1,6 @@
 
 
+
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/apiFetch'
 import LiveChart from '../components/LiveChart'
@@ -44,6 +45,7 @@ export default function Training() {
   }
 
   useEffect(() => {
+    // Load datasets and experiments in parallel, don't block on failure
     apiFetch('/dataset/list').then(data => {
       setDatasets(Array.isArray(data) ? data : [])
       if (data.length > 0) setConfig(c => ({ ...c, dataset_id: data[0].id }))
@@ -78,14 +80,16 @@ export default function Training() {
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this experiment?')) return
+    // Optimistic removal
+    setExperiments(prev => prev.filter(e => e.id !== id))
+    if (activeExp && activeExp.id === id) {
+      setActiveExp(null)
+    }
     try {
       await apiFetch(`/training/${id}`, { method: 'DELETE' })
-      loadExperiments()
-      if (activeExp && activeExp.id === id) {
-        setActiveExp(null)
-      }
     } catch (e) {
       alert(e.message)
+      loadExperiments() // Restore on failure
     }
   }
 

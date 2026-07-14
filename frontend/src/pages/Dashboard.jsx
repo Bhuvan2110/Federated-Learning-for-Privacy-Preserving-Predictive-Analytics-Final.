@@ -57,19 +57,23 @@ function AlgoBadge({ algo }) {
 export default function Dashboard() {
   const [experiments, setExperiments] = useState([])
   const [compare, setCompare] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   const load = async () => {
     try {
       setLoading(true)
       setError(null)
-      const [exps, cmp] = await Promise.all([
+      const [exps, cmp] = await Promise.allSettled([
         apiFetch('/training/list'),
         apiFetch('/training/compare'),
       ])
-      setExperiments(Array.isArray(exps) ? exps : [])
-      setCompare(Array.isArray(cmp) ? cmp : [])
+      setExperiments(exps.status === 'fulfilled' && Array.isArray(exps.value) ? exps.value : [])
+      setCompare(cmp.status === 'fulfilled' && Array.isArray(cmp.value) ? cmp.value : [])
+      // Show error only if both failed
+      if (exps.status === 'rejected' && cmp.status === 'rejected') {
+        setError(exps.reason?.message || 'Failed to load data')
+      }
     } catch (e) {
       setError(e.message)
     } finally {

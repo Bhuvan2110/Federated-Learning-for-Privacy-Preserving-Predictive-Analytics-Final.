@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { apiUpload, apiFetch } from '../utils/apiFetch'
-import { Upload, Database, Eye, Trash2, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Upload, Database, Eye, Trash2, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, User } from 'lucide-react'
 
 function ColumnBadge({ col }) {
   const isNum = col.dtype === 'numeric'
@@ -34,6 +34,7 @@ export default function Datasets() {
       const data = await apiFetch('/dataset/list')
       setDatasets(Array.isArray(data) ? data : [])
     } catch (e) {
+      // Don't block the page — just show an inline error
       setError(e.message)
     } finally {
       setLoading(false)
@@ -45,14 +46,43 @@ export default function Datasets() {
   const handleFile = async (file) => {
     if (!file) return
     if (!file.name.endsWith('.csv')) { setError('Only CSV files accepted'); return }
+
+    // Optimistic: add a placeholder entry immediately so it feels instant
+    const tempId = `temp-${Date.now()}`
+    const optimisticEntry = {
+      id: tempId,
+      filename: file.name,
+      row_count: null,
+      cols: [],
+      uploaded_by: null,
+      created_at: new Date().toISOString(),
+      _uploading: true,
+    }
+    setDatasets(prev => [optimisticEntry, ...prev])
     setUploading(true)
     setError(null)
+
     try {
       const form = new FormData()
       form.append('file', file)
       const result = await apiUpload('/dataset/upload', form)
-      setDatasets(prev => [{ id: result.id, filename: result.filename, row_count: result.row_count, cols: result.columns, created_at: new Date().toISOString() }, ...prev])
+      // Replace the optimistic entry with real data
+      setDatasets(prev =>
+        prev.map(d => d.id === tempId
+          ? {
+              id: result.id,
+              filename: result.filename,
+              uploaded_by: result.uploaded_by || null,
+              row_count: result.row_count,
+              cols: result.columns,
+              created_at: new Date().toISOString(),
+            }
+          : d
+        )
+      )
     } catch (e) {
+      // Remove optimistic entry on failure
+      setDatasets(prev => prev.filter(d => d.id !== tempId))
       setError(e.message)
     } finally {
       setUploading(false)
@@ -67,6 +97,7 @@ export default function Datasets() {
   }
 
   const handlePreview = async (id) => {
+    if (id.startsWith('temp-')) return // Can't preview uploading file
     try {
       const data = await apiFetch(`/dataset/preview/${id}`)
       setPreview(data)
@@ -77,9 +108,16 @@ export default function Datasets() {
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this dataset?')) return
-    await apiFetch(`/dataset/${id}`, { method: 'DELETE' })
+    // Optimistic removal
     setDatasets(prev => prev.filter(d => d.id !== id))
     if (preview) setPreview(null)
+    try {
+      await apiFetch(`/dataset/${id}`, { method: 'DELETE' })
+    } catch (e) {
+      // Re-fetch on failure to restore state
+      setError(e.message)
+      loadDatasets()
+    }
   }
 
   return (
@@ -138,25 +176,39 @@ export default function Datasets() {
             <p className="text-slate-500 text-sm">No datasets yet — upload your first CSV above</p>
           </div>
         ) : datasets.map(ds => (
-          <div key={ds.id} className="glass-card p-4 flex items-start justify-between gap-3">
+          <div key={ds.id} className={`glass-card p-4 flex items-start justify-between gap-3 ${ds._uploading ? 'opacity-60' : ''}`}>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
-                <FileSpreadsheet size={16} className="text-brand-400" />
+                {ds._uploading
+                  ? <Loader2 size={16} className="text-brand-400 animate-spin" />
+                  : <FileSpreadsheet size={16} className="text-brand-400" />
+                }
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-200 font-mono">{ds.filename}</p>
-                <p className="text-xs text-slate-500">{ds.row_count?.toLocaleString()} rows · {ds.cols?.length} cols</p>
+                <p className="text-xs text-slate-500">
+                  {ds._uploading ? 'Uploading…' : `${ds.row_count?.toLocaleString()} rows · ${ds.cols?.length} cols`}
+                </p>
+                {/* Show uploader's name (Google account name) */}
+                {ds.uploaded_by && (
+                  <p className="text-xs text-brand-400/80 mt-0.5 flex items-center gap-1">
+                    <User size={10} className="flex-shrink-0" />
+                    <span className="truncate">{ds.uploaded_by}</span>
+                  </p>
+                )}
                 <p className="text-xs text-slate-600 mt-0.5">{new Date(ds.created_at).toLocaleDateString()}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => handlePreview(ds.id)} className="btn-secondary text-xs py-1.5 px-3">
-                <Eye size={12} /> Preview
-              </button>
-              <button onClick={() => handleDelete(ds.id)} className="btn-danger text-xs py-1.5 px-3">
-                <Trash2 size={12} />
-              </button>
-            </div>
+            {!ds._uploading && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => handlePreview(ds.id)} className="btn-secondary text-xs py-1.5 px-3">
+                  <Eye size={12} /> Preview
+                </button>
+                <button onClick={() => handleDelete(ds.id)} className="btn-danger text-xs py-1.5 px-3">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

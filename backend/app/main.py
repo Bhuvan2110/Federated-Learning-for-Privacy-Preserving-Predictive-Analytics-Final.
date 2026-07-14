@@ -1,7 +1,6 @@
 """
 FastAPI application entry point.
 """
-import mlflow
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -14,12 +13,25 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: configure MLflow
+    # Startup: configure MLflow (optional — skipped if mlflow not installed/offline)
+    import socket
+    from urllib.parse import urlparse
     try:
+        # Fast reachability check for MLflow tracking URI
+        uri = urlparse(settings.mlflow_tracking_uri)
+        host = uri.hostname or "localhost"
+        port = uri.port or 5000
+        
+        # Test connection with 1-second timeout
+        s = socket.create_connection((host, port), timeout=1.0)
+        s.close()
+        
+        import mlflow
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
         mlflow.set_experiment("fl-platform")
+        print("✅ Connected to MLflow tracking server.")
     except Exception:
-        pass
+        print("⚠️ MLflow server is offline. Skipping MLflow tracking.")
     yield
     # Shutdown: nothing needed
 

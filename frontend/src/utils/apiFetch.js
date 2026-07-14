@@ -34,7 +34,7 @@ export function stopKeepAlive() {
   }
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -50,7 +50,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 }
 
 // Retry up to `maxRetries` times, waiting `delayMs` between attempts
-export async function apiFetch(path, options = {}, maxRetries = 4, delayMs = 3000) {
+export async function apiFetch(path, options = {}, maxRetries = 1, delayMs = 1500) {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -60,7 +60,7 @@ export async function apiFetch(path, options = {}, maxRetries = 4, delayMs = 300
   let lastErr
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetchWithTimeout(`${API_BASE}${path}`, { ...options, headers })
+      const res = await fetchWithTimeout(`${API_BASE}${path}`, { ...options, headers }, 10000)
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: res.statusText }))
         throw new Error(body.detail || `API error ${res.status}`)
@@ -78,12 +78,12 @@ export async function apiFetch(path, options = {}, maxRetries = 4, delayMs = 300
 
   // Map internal codes to user-friendly messages
   if (lastErr.message === 'timeout' || lastErr.message === 'network') {
-    throw new Error('Cannot reach server — the backend may be waking up. Please retry in a moment.')
+    throw new Error('Cannot reach server — the backend may be starting up. Please retry in a moment.')
   }
   throw lastErr
 }
 
-export async function apiUpload(path, formData, maxRetries = 4, delayMs = 3000) {
+export async function apiUpload(path, formData, maxRetries = 1, delayMs = 2000) {
   const headers = {}
   if (_token) headers['Authorization'] = `Bearer ${_token}`
 
@@ -93,7 +93,7 @@ export async function apiUpload(path, formData, maxRetries = 4, delayMs = 3000) 
       const res = await fetchWithTimeout(
         `${API_BASE}${path}`,
         { method: 'POST', headers, body: formData },
-        90000 // uploads can take longer
+        60000 // uploads can take longer
       )
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: res.statusText }))
@@ -109,7 +109,7 @@ export async function apiUpload(path, formData, maxRetries = 4, delayMs = 3000) 
   }
 
   if (lastErr.message === 'timeout' || lastErr.message === 'network') {
-    throw new Error('Cannot reach server — the backend may be waking up. Please retry in a moment.')
+    throw new Error('Cannot reach server — the backend may be starting up. Please retry in a moment.')
   }
   throw lastErr
 }

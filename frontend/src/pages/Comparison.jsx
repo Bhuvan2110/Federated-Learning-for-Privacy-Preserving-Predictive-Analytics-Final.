@@ -162,21 +162,24 @@ export default function Comparison() {
   const [compare, setCompare] = useState([])
   const [selectedExpIds, setSelectedExpIds] = useState([])
   const [privacyCurve, setPrivacyCurve] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
-      const [cmp, puc] = await Promise.all([
+      const [cmpResult, pucResult] = await Promise.allSettled([
         apiFetch('/training/compare'),
-        apiFetch('/metrics/privacy-utility').catch(() => []),
+        apiFetch('/metrics/privacy-utility'),
       ])
-      const cmpData = Array.isArray(cmp) ? cmp : []
+      const cmpData = cmpResult.status === 'fulfilled' && Array.isArray(cmpResult.value) ? cmpResult.value : []
       setCompare(cmpData)
-      setPrivacyCurve(Array.isArray(puc) ? puc : [])
+      setPrivacyCurve(pucResult.status === 'fulfilled' && Array.isArray(pucResult.value) ? pucResult.value : [])
       setSelectedExpIds(cmpData.map(c => c.experiment_id))
+      if (cmpResult.status === 'rejected') {
+        setError(cmpResult.reason?.message || 'Failed to load comparison data')
+      }
     } catch (e) {
       setError(e.message)
     } finally {

@@ -36,9 +36,10 @@ async def upload_dataset(file: UploadFile = File(...), user: dict = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {str(e)}")
 
-    # Save metadata to DB
+    # Save metadata to DB (includes uploader's display name)
     result = sb.table("datasets").insert({
         "user_id": user_id,
+        "uploaded_by": user.get("name", user.get("email", "Unknown")),
         "filename": file.filename,
         "storage_path": storage_path,
         "cols": col_profiles,
@@ -48,6 +49,7 @@ async def upload_dataset(file: UploadFile = File(...), user: dict = Depends(get_
     return {
         "id": result.data[0]["id"],
         "filename": file.filename,
+        "uploaded_by": user.get("name", user.get("email", "Unknown")),
         "row_count": len(rows),
         "columns": col_profiles,
         "storage_path": storage_path,
@@ -78,7 +80,7 @@ async def preview_dataset(dataset_id: str, user: dict = Depends(get_current_user
 @router.get("/list")
 async def list_datasets(user: dict = Depends(get_current_user)):
     sb = get_supabase()
-    result = sb.table("datasets").select("id, filename, row_count, created_at, cols").eq("user_id", user["id"]).order("created_at", desc=True).execute()
+    result = sb.table("datasets").select("id, filename, row_count, created_at, cols, uploaded_by").eq("user_id", user["id"]).order("created_at", desc=True).execute()
     return result.data
 
 

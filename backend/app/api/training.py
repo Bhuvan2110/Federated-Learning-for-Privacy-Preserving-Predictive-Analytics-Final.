@@ -2,7 +2,7 @@
 Training API — trigger FL experiments, monitor status, compare results.
 """
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 from app.api.dependencies import get_current_user
@@ -29,7 +29,11 @@ VALID_ALGORITHMS = {"fedavg", "fedprox", "scaffold", "dpsgd", "central"}
 
 
 @router.post("/start")
-async def start_training(config: TrainingConfig, user: dict = Depends(get_current_user)):
+async def start_training(
+    config: TrainingConfig,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user)
+):
     if config.algorithm not in VALID_ALGORITHMS:
         raise HTTPException(status_code=400, detail=f"Algorithm must be one of {VALID_ALGORITHMS}")
 
@@ -49,16 +53,54 @@ async def start_training(config: TrainingConfig, user: dict = Depends(get_curren
     }).execute()
     experiment_id = exp.data[0]["id"]
 
-    # Dispatch Celery task
+    # Dispatch task: check if Redis is running first to avoid Celery hangs
+    import socket
+    from urllib.parse import urlparse
+    from app.core.config import get_settings
+    
+    settings = get_settings()
+    redis_available = False
     try:
+        r_uri = urlparse(settings.redis_url)
+        host = r_uri.hostname or "localhost"
+        port = r_uri.port or 6379
+        s = socket.create_connection((host, port), timeout=0.8)
+        s.close()
+        redis_available = True
+    except Exception:
+        pass
+
+    if redis_available:
+        try:
+            from app.tasks.celery_app import run_training_task
+            task = run_training_task.delay(experiment_id, {**config.model_dump(), "user_id": user["id"]})
+            sb.table("experiments").update({"celery_task_id": task.id}).eq("id", experiment_id).execute()
+            return {"experiment_id": experiment_id, "task_id": task.id, "status": "pending"}
+        except Exception as e:
+            print(f"⚠️ Celery dispatch failed despite Redis online ({str(e)}). Falling back to background thread.")
+            redis_available = False
+
+    if not redis_available:
+        # Fallback: run in a background thread if Celery/Redis is not available
+        print("⚠️ Celery/Redis is offline. Running training task in local background thread.")
         from app.tasks.celery_app import run_training_task
-        task = run_training_task.delay(experiment_id, {**config.model_dump(), "user_id": user["id"]})
-        sb.table("experiments").update({"celery_task_id": task.id}).eq("id", experiment_id).execute()
-        return {"experiment_id": experiment_id, "task_id": task.id, "status": "pending"}
-    except Exception as e:
-        # Fallback: run synchronously if Celery not available
-        sb.table("experiments").update({"status": "failed"}).eq("id", experiment_id).execute()
-        raise HTTPException(status_code=500, detail=f"Failed to dispatch task: {str(e)}")
+        
+        class DummyCeleryTask:
+            class DummyRequest:
+                def __init__(self):
+                    self.id = f"local-{uuid.uuid4()}"
+            def __init__(self):
+                self.request = self.DummyRequest()
+                
+        dummy_task = DummyCeleryTask()
+        background_tasks.add_task(
+            run_training_task,
+            dummy_task,
+            experiment_id,
+            {**config.model_dump(), "user_id": user["id"]}
+        )
+        sb.table("experiments").update({"celery_task_id": dummy_task.request.id}).eq("id", experiment_id).execute()
+        return {"experiment_id": experiment_id, "task_id": dummy_task.request.id, "status": "pending"}
 
 
 @router.get("/list")

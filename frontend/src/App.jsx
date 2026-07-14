@@ -22,13 +22,19 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setAuthToken(session.access_token)
+        const u = session.user
         setUser({
-          id: session.user.id,
-          email: session.user.email,
-          role: session.user.app_metadata?.role || 'user',
+          id: u.id,
+          email: u.email,
+          name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || 'User',
+          avatar: u.user_metadata?.avatar_url || null,
+          role: u.app_metadata?.role || 'user',
           token: session.access_token,
         })
       }
+      setLoading(false)
+    }).catch(() => {
+      // If Supabase is unreachable, still allow the app to load
       setLoading(false)
     })
 
@@ -39,10 +45,13 @@ export default function App() {
         setAuthToken(null)
       } else if (session) {
         setAuthToken(session.access_token)
+        const u = session.user
         setUser({
-          id: session.user.id,
-          email: session.user.email,
-          role: session.user.app_metadata?.role || 'user',
+          id: u.id,
+          email: u.email,
+          name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || 'User',
+          avatar: u.user_metadata?.avatar_url || null,
+          role: u.app_metadata?.role || 'user',
           token: session.access_token,
         })
       }
@@ -63,8 +72,24 @@ export default function App() {
 
   const handleLogin = (userData) => { setUser(userData) }
 
+  const handleSkipLogin = () => {
+    // Create a guest user with local token
+    setAuthToken('guest-token')
+    setUser({
+      id: 'guest',
+      email: 'guest@demo.local',
+      name: 'Guest User',
+      role: 'guest',
+      token: 'guest-token',
+    })
+  }
+
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (_) {
+      // Ignore sign-out errors (e.g. guest user)
+    }
     setUser(null)
     setAuthToken(null)
   }
@@ -78,7 +103,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login onLogin={handleLogin} />
+    return <Login onLogin={handleLogin} onSkip={handleSkipLogin} />
   }
 
   return (

@@ -13,6 +13,7 @@ export default function Predict() {
   const [mode, setMode] = useState('single')
 
   useEffect(() => {
+    // Load models in background — don't block the page
     apiFetch('/predict/models').then(data => {
       setModels(Array.isArray(data) ? data : [])
     }).catch(() => {})
