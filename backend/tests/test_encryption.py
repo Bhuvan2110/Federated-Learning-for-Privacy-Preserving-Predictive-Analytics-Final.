@@ -1,11 +1,10 @@
 """Tests for AES-256-GCM + RSA-2048-OAEP encryption."""
-import pytest
 from app.core.security import (
     generate_rsa_keypair, export_public_key_pem, load_public_key_pem,
     rsa_encrypt, rsa_decrypt,
     generate_aes_key, aes_encrypt, aes_decrypt,
     hybrid_encrypt, hybrid_decrypt,
-    get_server_public_key_pem, get_server_private_key,
+    get_server_public_key_pem,
 )
 
 
