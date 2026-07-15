@@ -65,21 +65,72 @@ def run_training_task(self, experiment_id: str, config: dict):
         csv_bytes = sb.storage.from_("datasets").download(storage_path)
         headers, rows = parse_csv(csv_bytes)
 
-        # Assume last column is target
+        # Determine if columns are numeric or categorical
+        encoders = {}
+        X_raw = []
+        y = []
+        
+        # Parse target column (last column)
         target_col = len(headers) - 1
         try:
-            X_raw = [[float(r[j]) for j in range(len(headers)) if j != target_col] for r in rows]
             y = [int(float(r[target_col])) for r in rows]
         except (ValueError, IndexError):
-            raise ValueError("CSV must contain only numeric values with binary target in last column")
+            raise ValueError("CSV must contain a binary target (0 or 1) in the last column")
+
+        # Parse feature columns
+        n_features = len(headers) - 1
+        feature_indices = [j for j in range(len(headers)) if j != target_col]
+        feature_names = [headers[j] for j in feature_indices]
+        
+        # Profile columns to see which are categorical
+        for idx in feature_indices:
+            col_name = headers[idx]
+            col_vals = [r[idx] for r in rows]
+            
+            # Check if all non-empty values are numeric
+            is_numeric = True
+            for v in col_vals:
+                if v.strip() == "":
+                    continue
+                try:
+                    float(v)
+                except ValueError:
+                    is_numeric = False
+                    break
+            
+            if not is_numeric:
+                # Collect unique non-empty categories
+                unique_cats = sorted(list(set(v.strip() for v in col_vals if v.strip() != "")))
+                encoders[col_name] = unique_cats
+        
+        # Now construct X_raw with encoding applied
+        for r in rows:
+            row_features = []
+            for idx in feature_indices:
+                col_name = headers[idx]
+                val_str = r[idx].strip() if idx < len(r) else ""
+                
+                if col_name in encoders:
+                    # Categorical column
+                    if val_str in encoders[col_name]:
+                        val_float = float(encoders[col_name].index(val_str))
+                    else:
+                        val_float = 0.0  # default for missing/unknown categories
+                else:
+                    # Numeric column
+                    try:
+                        val_float = float(val_str) if val_str != "" else 0.0
+                    except ValueError:
+                        val_float = 0.0
+                
+                row_features.append(val_float)
+            X_raw.append(row_features)
 
         X, scalers = min_max_normalize(X_raw)
         splits = stratified_split(X, y, train_ratio=0.70, val_ratio=0.15)
         X_train, y_train = splits["train"]
         X_val, y_val = splits["val"]
         X_test, y_test = splits["test"]
-
-        feature_names = [headers[j] for j in range(len(headers)) if j != target_col]
 
         # Partition clients
         if algorithm != "central":
@@ -134,7 +185,13 @@ def run_training_task(self, experiment_id: str, config: dict):
         eval_result = full_evaluation(y_test, preds, scores, weights, feature_names)
 
         # Store model weights
-        model_data = json.dumps({"weights": weights, "bias": bias, "scalers": scalers, "feature_names": feature_names})
+        model_data = json.dumps({
+            "weights": weights,
+            "bias": bias,
+            "scalers": scalers,
+            "feature_names": feature_names,
+            "encoders": encoders
+        })
         model_path = f"models/{experiment_id}/model_v1.json"
         sb.storage.from_("models").upload(model_path, model_data.encode(), {"content-type": "application/json"})
 

@@ -94,7 +94,7 @@ async def start_training(
                 
         dummy_task = DummyCeleryTask()
         background_tasks.add_task(
-            run_training_task,
+            run_training_task.run.__func__,
             dummy_task,
             experiment_id,
             {**config.model_dump(), "user_id": user["id"]}

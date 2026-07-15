@@ -42,8 +42,29 @@ async def predict_single(body: SinglePredictRequest, user: dict = Depends(get_cu
     feature_names = model_data.get("feature_names", [f"feature_{i}" for i in range(len(weights))])
 
     # Build feature vector in correct order
+    encoders = model_data.get("encoders", {})
     try:
-        raw_row = [float(body.features.get(name, 0.0)) for name in feature_names]
+        raw_row = []
+        for name in feature_names:
+            val = body.features.get(name, 0.0)
+            if name in encoders:
+                if isinstance(val, str):
+                    val_str = val.strip()
+                    if val_str in encoders[name]:
+                        val_float = float(encoders[name].index(val_str))
+                    else:
+                        val_float = 0.0
+                else:
+                    try:
+                        val_float = float(val)
+                    except (ValueError, TypeError):
+                        val_float = 0.0
+            else:
+                try:
+                    val_float = float(val)
+                except (ValueError, TypeError):
+                    val_float = 0.0
+            raw_row.append(val_float)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid feature values: {e}")
 
@@ -90,10 +111,25 @@ async def predict_batch(
     results = []
     batch_id = compute_input_hash({"ts": str(id(rows))})
 
+    encoders = model_data.get("encoders", {})
     for i, row in enumerate(rows):
         try:
             feature_map = {h: row[j] if j < len(row) else "0" for j, h in enumerate(headers)}
-            raw_row = [float(feature_map.get(name, 0.0)) for name in feature_names]
+            raw_row = []
+            for name in feature_names:
+                val = feature_map.get(name, "0")
+                if name in encoders:
+                    val_str = str(val).strip()
+                    if val_str in encoders[name]:
+                        val_float = float(encoders[name].index(val_str))
+                    else:
+                        val_float = 0.0
+                else:
+                    try:
+                        val_float = float(val)
+                    except (ValueError, TypeError):
+                        val_float = 0.0
+                raw_row.append(val_float)
             norm_row = apply_scaler(raw_row, scalers)
             prob = predict_proba(weights, bias, [norm_row])[0]
             pred = 1 if prob >= 0.5 else 0
