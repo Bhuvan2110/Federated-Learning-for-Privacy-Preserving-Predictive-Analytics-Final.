@@ -38,7 +38,6 @@ def run_training_task(self, experiment_id: str, config: dict):
     from app.ml.differential_privacy import run_dpsgd
     from app.ml.logistic_regression import predict, predict_proba
     from app.ml.metrics import full_evaluation
-    import base64
 
     sb = get_supabase()
     algorithm = config.get("algorithm", "fedavg")
@@ -76,7 +75,6 @@ def run_training_task(self, experiment_id: str, config: dict):
             raise ValueError("CSV must contain a binary target (0 or 1) in the last column")
 
         # Parse feature columns
-        n_features = len(headers) - 1
         feature_indices = [j for j in range(len(headers)) if j != target_col]
         feature_names = [headers[j] for j in feature_indices]
         

@@ -1,10 +1,10 @@
 """Tests for all 5 FL/ML algorithms."""
 import math
-from app.ml.logistic_regression import sigmoid, binary_cross_entropy, predict_proba, predict, init_weights, compute_accuracy
+from app.ml.logistic_regression import sigmoid, binary_cross_entropy, predict_proba, init_weights
 from app.ml.fl_algorithms import run_fedavg, run_fedprox, run_scaffold, run_central, weighted_average
 from app.ml.differential_privacy import run_dpsgd, clip_gradient, compute_epsilon
 from app.ml.preprocessing import (
-    parse_csv, profile_columns, min_max_normalize,
+    parse_csv, min_max_normalize,
     stratified_split, partition_iid, partition_non_iid,
 )
 from app.ml.metrics import confusion_matrix, f1_score, roc_curve, feature_importance

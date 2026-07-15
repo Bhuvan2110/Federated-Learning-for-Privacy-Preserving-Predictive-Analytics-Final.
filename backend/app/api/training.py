@@ -141,21 +141,48 @@ async def compare_experiments(user: dict = Depends(get_current_user)):
 @router.get("/{experiment_id}/status")
 async def get_training_status(experiment_id: str, user: dict = Depends(get_current_user)):
     sb = get_supabase()
-    exp = sb.table("experiments").select("*").eq("id", experiment_id).single().execute()
+    exp = sb.table("experiments").select("*, datasets(filename)").eq("id", experiment_id).single().execute()
     if not exp.data:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
-    # Get latest rounds
+    # Get rounds
     rounds = sb.table("rounds").select("*").eq("experiment_id", experiment_id).order("round_num").execute()
+
+    # Get metrics if completed
+    metrics_data = None
+    privacy_data = []
+    if exp.data.get("status") == "completed":
+        try:
+            metrics = sb.table("metrics").select("*").eq("experiment_id", experiment_id).single().execute()
+            metrics_data = metrics.data
+        except Exception:
+            pass
+        pb = sb.table("privacy_budget").select("round_num, epsilon, delta").eq("experiment_id", experiment_id).order("round_num").execute()
+        privacy_data = pb.data or []
+
     return {
         "experiment": exp.data,
         "rounds": rounds.data,
         "latest_round": rounds.data[-1] if rounds.data else None,
+        "metrics": metrics_data,
+        "privacy_budget": privacy_data,
     }
 
 
 @router.delete("/{experiment_id}")
 async def delete_experiment(experiment_id: str, user: dict = Depends(get_current_user)):
     sb = get_supabase()
-    sb.table("experiments").delete().eq("id", experiment_id).eq("user_id", user["id"]).execute()
+
+    # Verify experiment exists
+    exp = sb.table("experiments").select("id, user_id").eq("id", experiment_id).single().execute()
+    if not exp.data:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    # Allow owner or admin to delete
+    is_admin = user.get("role") in ("admin", "super_admin")
+    if exp.data["user_id"] != user["id"] and not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this experiment")
+
+    # CASCADE in DB schema handles rounds, metrics, models, privacy_budget
+    sb.table("experiments").delete().eq("id", experiment_id).execute()
     return {"message": "Experiment deleted"}
