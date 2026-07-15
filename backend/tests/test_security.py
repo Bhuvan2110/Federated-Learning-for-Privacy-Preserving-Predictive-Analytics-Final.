@@ -1,6 +1,5 @@
 """Tests for security utilities."""
 import pytest
-from unittest.mock import patch, MagicMock
 from app.core.security import get_server_public_key_pem
 
 
