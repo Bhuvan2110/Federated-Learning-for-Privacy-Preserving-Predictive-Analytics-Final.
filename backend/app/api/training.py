@@ -4,7 +4,6 @@ Training API — trigger FL experiments, monitor status, compare results.
 import uuid
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
-from typing import Optional
 from app.api.dependencies import get_current_user
 from app.db.supabase_client import get_supabase
 

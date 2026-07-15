@@ -1,9 +1,6 @@
-import pytest
 import json
 from app.tasks.celery_app import run_training_task
 from app.api.predict import _load_model
-from fastapi import UploadFile
-import io
 
 class MockSupabase:
     def __init__(self, dataset_bytes):

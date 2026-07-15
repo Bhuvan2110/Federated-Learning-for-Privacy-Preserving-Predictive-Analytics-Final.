@@ -5,11 +5,10 @@ Implements: FedAvg, FedProx, SCAFFOLD, Central Training.
 from app.ml.logistic_regression import (
     train_local, compute_gradients, sgd_step, predict_proba,
     binary_cross_entropy, compute_accuracy, predict, init_weights,
-    weight_diff_norm_sq,
 )
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────[...]
 
 def weighted_average(weight_lists: list[list[float]], counts: list[int]) -> list[float]:
     """FedAvg weighted average: sum(n_k * w_k) / sum(n_k)."""
@@ -27,7 +26,7 @@ def scalar_avg(bias_list: list[float], counts: list[int]) -> float:
     return sum(b * n for b, n in zip(bias_list, counts)) / total
 
 
-# ── Central Training ──────────────────────────────────────────────────────────
+# ── Central Training ────────────────────────────────────────────────────────────[...]
 
 def run_central(
     X: list[list[float]],
@@ -57,7 +56,7 @@ def run_central(
     return history, weights, bias
 
 
-# ── FedAvg ────────────────────────────────────────────────────────────────────
+# ── FedAvg ────────────────────────────────────────────────────────────[...]
 
 def run_fedavg(
     clients: list[tuple],          # [(X_k, y_k), ...]
@@ -113,7 +112,7 @@ def run_fedavg(
     return history, global_w, global_b
 
 
-# ── FedProx ───────────────────────────────────────────────────────────────────
+# ── FedProx ───────────────────────────────────────────────────────────────[...]
 
 def fedprox_local_train(
     weights: list[float],
@@ -197,7 +196,7 @@ def run_fedprox(
     return history, global_w, global_b
 
 
-# ── SCAFFOLD ──────────────────────────────────────────────────────────────────
+# ── SCAFFOLD ───────────────────────────────────────────────────────────────[...]
 
 def run_scaffold(
     clients: list[tuple],
