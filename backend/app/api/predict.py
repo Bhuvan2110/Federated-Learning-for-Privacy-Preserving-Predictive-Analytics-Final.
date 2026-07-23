@@ -13,11 +13,21 @@ from app.ml.preprocessing import apply_scaler, compute_input_hash, parse_csv
 router = APIRouter(prefix="/predict", tags=["predictions"])
 
 
-def _load_model(model_id: str, sb) -> dict:
-    """Load model weights from Supabase Storage."""
+def _load_model(model_id: str, sb, user: dict | None = None) -> dict:
+    """Load model weights from Supabase Storage and enforce user ownership."""
     model_row = sb.table("models").select("*").eq("id", model_id).single().execute()
     if not model_row.data:
         raise HTTPException(status_code=404, detail="Model not found")
+
+    if user is not None:
+        exp_row = sb.table("experiments").select("user_id, status").eq("id", model_row.data["experiment_id"]).single().execute()
+        if not exp_row.data:
+            raise HTTPException(status_code=404, detail="Model not found")
+        if exp_row.data["user_id"] != user["id"] and user.get("role") not in ("admin", "super_admin"):
+            raise HTTPException(status_code=404, detail="Model not found")
+        if exp_row.data.get("status") != "completed" and user.get("role") not in ("admin", "super_admin"):
+            raise HTTPException(status_code=404, detail="Model not available")
+
     weights_bytes = sb.storage.from_("models").download(model_row.data["weights_path"])
     return json.loads(weights_bytes.decode())
 
@@ -31,7 +41,7 @@ class SinglePredictRequest(BaseModel):
 async def predict_single(body: SinglePredictRequest, user: dict = Depends(get_current_user)):
     """Single-row JSON prediction."""
     sb = get_supabase()
-    model_data = _load_model(body.model_id, sb)
+    model_data = _load_model(body.model_id, sb, user)
 
     weights = model_data["weights"]
     bias = model_data["bias"]
@@ -95,7 +105,7 @@ async def predict_batch(
 ):
     """Batch prediction from CSV upload."""
     sb = get_supabase()
-    model_data = _load_model(model_id, sb)
+    model_data = _load_model(model_id, sb, user)
 
     weights = model_data["weights"]
     bias = model_data["bias"]
@@ -180,10 +190,7 @@ async def list_available_models(user: dict = Depends(get_current_user)):
 async def get_model_metadata(model_id: str, user: dict = Depends(get_current_user)):
     """Return feature metadata for a given prediction model."""
     sb = get_supabase()
-    model_row = sb.table("models").select("*").eq("id", model_id).single().execute()
-    if not model_row.data:
-        raise HTTPException(status_code=404, detail="Model not found")
-
+    _load_model(model_id, sb, user)
     model_data = _load_model(model_id, sb)
     feature_names = model_data.get("feature_names", [])
     encoders = model_data.get("encoders", {})
