@@ -9,6 +9,7 @@ import Datasets from './pages/Datasets'
 import Training from './pages/Training'
 import Predict from './pages/Predict'
 import Comparison from './pages/Comparison'
+import AgentChat from './pages/AgentChat'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -117,6 +118,7 @@ export default function App() {
             <Route path="/datasets"  element={<Datasets />} />
             <Route path="/training"  element={<Training />} />
             <Route path="/predict"   element={<Predict />} />
+            <Route path="/agent"     element={<AgentChat />} />
             <Route path="/compare"   element={<Comparison />} />
             <Route path="*"          element={<Navigate to="/dashboard" replace />} />
           </Routes>

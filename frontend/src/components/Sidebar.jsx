@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Database, Brain, Zap, BarChart3,
-  LogOut, Lock, ChevronRight
+  LogOut, Lock, ChevronRight, MessageSquare
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/datasets',  icon: Database,        label: 'Datasets'  },
   { to: '/training',  icon: Brain,            label: 'Training'  },
   { to: '/predict',   icon: Zap,              label: 'Predict'   },
+  { to: '/agent',     icon: MessageSquare,    label: 'AI Agent'  },
   { to: '/compare',   icon: BarChart3,        label: 'Compare'   },
 ]
 

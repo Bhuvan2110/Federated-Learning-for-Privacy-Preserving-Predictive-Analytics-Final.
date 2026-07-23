@@ -65,6 +65,13 @@ def run_training_task(self, experiment_id: str, config: dict):
         csv_bytes = sb.storage.from_("datasets").download(storage_path)
         headers, rows = parse_csv(csv_bytes)
 
+        # Ensure sl.no is present as a feature (excluding the target column which is the last one)
+        has_sl_no = any(h.lower().replace(" ", "").replace("_", "").replace(".", "") in ["slno", "sno", "serialno"] for h in headers[:-1])
+        if not has_sl_no:
+            headers.insert(0, "sl.no")
+            for idx, r in enumerate(rows):
+                r.insert(0, str(idx + 1))
+
         # Determine if columns are numeric or categorical
         encoders = {}
         X_raw = []

@@ -46,3 +46,7 @@ logs/
 
 # Docker
 *.pid
+
+# Local SQLite and Storage
+backend/local_db.sqlite
+backend/local_storage/

@@ -25,6 +25,20 @@ async def upload_dataset(file: UploadFile = File(...), user: dict = Depends(get_
     if len(rows) < 10:
         raise HTTPException(status_code=400, detail="CSV must have at least 10 rows")
 
+    # Ensure sl.no is present as a feature (excluding the target column which is the last one)
+    has_sl_no = any(h.lower().replace(" ", "").replace("_", "").replace(".", "") in ["slno", "sno", "serialno"] for h in headers[:-1])
+    if not has_sl_no:
+        headers.insert(0, "sl.no")
+        for idx, r in enumerate(rows):
+            r.insert(0, str(idx + 1))
+        # Re-serialize content to keep the uploaded file in sync
+        import csv
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
+        content = output.getvalue().encode("utf-8")
+
     col_profiles = profile_columns(headers, rows)
     storage_path = f"datasets/{user_id}/{file.filename}"
 
