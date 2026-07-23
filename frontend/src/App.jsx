@@ -10,6 +10,7 @@ import Training from './pages/Training'
 import Predict from './pages/Predict'
 import Comparison from './pages/Comparison'
 import AgentChat from './pages/AgentChat'
+import AIAgent from './pages/AIAgent'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -119,6 +120,7 @@ export default function App() {
             <Route path="/training"  element={<Training />} />
             <Route path="/predict"   element={<Predict />} />
             <Route path="/agent"     element={<AgentChat />} />
+            <Route path="/ai-agent"  element={<AIAgent />} />
             <Route path="/compare"   element={<Comparison />} />
             <Route path="*"          element={<Navigate to="/dashboard" replace />} />
           </Routes>

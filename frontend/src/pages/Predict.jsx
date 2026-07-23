@@ -5,6 +5,7 @@ import { Zap, Upload, ChevronRight, Download, AlertCircle, Loader2, CheckCircle2
 export default function Predict() {
   const [models, setModels] = useState([])
   const [selectedModel, setSelectedModel] = useState(null)
+  const [modelMetadata, setModelMetadata] = useState(null)
   const [features, setFeatures] = useState({})
   const [result, setResult] = useState(null)
   const [batchResults, setBatchResults] = useState(null)
@@ -18,6 +19,23 @@ export default function Predict() {
       setModels(Array.isArray(data) ? data : [])
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!selectedModel) {
+      setModelMetadata(null)
+      setFeatures({})
+      return
+    }
+
+    apiFetch(`/predict/model/${selectedModel.id}`)
+      .then(data => {
+        setModelMetadata(data)
+        const initialFeatures = {}
+        data.feature_names.forEach(name => { initialFeatures[name] = '' })
+        setFeatures(initialFeatures)
+      })
+      .catch(e => setError(e.message))
+  }, [selectedModel])
 
   const handleSinglePredict = async () => {
     if (!selectedModel) { setError('Select a model'); return }
@@ -119,15 +137,25 @@ export default function Predict() {
           <h2 className="text-sm font-semibold text-slate-200 mb-4">Feature Values</h2>
           {selectedModel ? (
             <div className="space-y-3">
-              <p className="text-xs text-slate-400">Enter feature values as JSON key-value pairs</p>
-              <textarea
-                rows={6}
-                className="input-field font-mono text-xs resize-none"
-                placeholder='{"age": 45, "glucose": 120, "bmi": 28.5, ...}'
-                onChange={e => {
-                  try { setFeatures(JSON.parse(e.target.value)) } catch {}
-                }}
-              />
+              <p className="text-xs text-slate-400">Enter all feature values shown below for the selected trained model.</p>
+              {modelMetadata ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {modelMetadata.feature_names.map(name => (
+                    <label key={name} className="block">
+                      <span className="text-xs text-slate-400">{name}</span>
+                      <input
+                        type="text"
+                        value={features[name] ?? ''}
+                        onChange={e => setFeatures(prev => ({ ...prev, [name]: e.target.value }))}
+                        className="input-field mt-1"
+                        placeholder="Enter value"
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-sm">Loading feature metadata…</p>
+              )}
               <button onClick={handleSinglePredict} disabled={loading} className="btn-primary">
                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
                 {loading ? 'Predicting…' : 'Predict'}

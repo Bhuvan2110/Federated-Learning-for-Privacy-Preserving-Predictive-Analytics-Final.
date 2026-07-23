@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
-from app.api import auth, datasets, training, predict, metrics, metrics_exporter, agent
+from app.api import auth, datasets, training, predict, metrics, metrics_exporter, agent, ai_agent
 
 settings = get_settings()
 
@@ -73,6 +73,7 @@ app.include_router(auth.router)
 app.include_router(datasets.router)
 app.include_router(training.router)
 app.include_router(predict.router)
+app.include_router(ai_agent.router)
 app.include_router(metrics.router)
 app.include_router(metrics_exporter.router)
 app.include_router(agent.router)

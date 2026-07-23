@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { to: '/datasets',  icon: Database,        label: 'Datasets'  },
   { to: '/training',  icon: Brain,            label: 'Training'  },
   { to: '/predict',   icon: Zap,              label: 'Predict'   },
-  { to: '/agent',     icon: MessageSquare,    label: 'AI Agent'  },
+  { to: '/ai-agent',  icon: MessageSquare,    label: 'AI Agent'   },
   { to: '/compare',   icon: BarChart3,        label: 'Compare'   },
 ]
 

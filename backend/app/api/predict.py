@@ -174,3 +174,21 @@ async def list_available_models(user: dict = Depends(get_current_user)):
         if model.data:
             models.append({**model.data[0], "algorithm": exp["algorithm"]})
     return models
+
+
+@router.get("/model/{model_id}")
+async def get_model_metadata(model_id: str, user: dict = Depends(get_current_user)):
+    """Return feature metadata for a given prediction model."""
+    sb = get_supabase()
+    model_row = sb.table("models").select("*").eq("id", model_id).single().execute()
+    if not model_row.data:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    model_data = _load_model(model_id, sb)
+    feature_names = model_data.get("feature_names", [])
+    encoders = model_data.get("encoders", {})
+    return {
+        "id": model_id,
+        "feature_names": feature_names,
+        "categorical_features": list(encoders.keys()),
+    }
