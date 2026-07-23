@@ -2,7 +2,6 @@
 Celery app + Redis broker + FL training tasks.
 """
 import json
-import os
 from celery import Celery
 from app.core.config import get_settings
 
@@ -39,7 +38,6 @@ def run_training_task(self, experiment_id: str, config: dict):
     from app.ml.differential_privacy import run_dpsgd
     from app.ml.logistic_regression import predict, predict_proba
     from app.ml.metrics import full_evaluation
-    import base64, json
 
     sb = get_supabase()
     algorithm = config.get("algorithm", "fedavg")
@@ -53,7 +51,6 @@ def run_training_task(self, experiment_id: str, config: dict):
     noise_multiplier = config.get("noise_multiplier", 1.0)
     delta = config.get("delta", 1e-5)
     non_iid = config.get("non_iid", False)
-    user_id = config.get("user_id")
 
     try:
         # Update status to running
@@ -85,7 +82,6 @@ def run_training_task(self, experiment_id: str, config: dict):
             raise ValueError("CSV must contain a binary target (0 or 1) in the last column")
 
         # Parse feature columns
-        n_features = len(headers) - 1
         feature_indices = [j for j in range(len(headers)) if j != target_col]
         feature_names = [headers[j] for j in feature_indices]
         
@@ -203,11 +199,11 @@ def run_training_task(self, experiment_id: str, config: dict):
         sb.storage.from_("models").upload(model_path, model_data.encode(), {"content-type": "application/json"})
 
         # Store model record
-        model_row = sb.table("models").insert({
+        sb.table("models").insert({
             "experiment_id": experiment_id,
             "weights_path": model_path,
             "version": 1,
-        }).execute().data[0]
+        }).execute()
 
         # Store metrics
         sb.table("metrics").insert({

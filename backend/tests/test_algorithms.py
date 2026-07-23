@@ -1,17 +1,16 @@
 """Tests for all 5 FL/ML algorithms."""
 import math
-import pytest
-from app.ml.logistic_regression import sigmoid, binary_cross_entropy, predict_proba, predict, init_weights, compute_accuracy
+from app.ml.logistic_regression import sigmoid, binary_cross_entropy, predict_proba, init_weights
 from app.ml.fl_algorithms import run_fedavg, run_fedprox, run_scaffold, run_central, weighted_average
 from app.ml.differential_privacy import run_dpsgd, clip_gradient, compute_epsilon
 from app.ml.preprocessing import (
-    parse_csv, profile_columns, min_max_normalize,
+    parse_csv, min_max_normalize,
     stratified_split, partition_iid, partition_non_iid,
 )
 from app.ml.metrics import confusion_matrix, f1_score, roc_curve, feature_importance
 
 
-# ── Sample Data ───────────────────────────────────────────────────────────────
+# ── Sample Data ──────────────────────────────────────────────────────────────[...]
 
 def make_data(n=100, n_features=4, seed=42):
     import random
@@ -47,7 +46,7 @@ def test_predict_proba_range():
     assert all(0.0 <= p <= 1.0 for p in probs)
 
 
-# ── FedAvg ────────────────────────────────────────────────────────────────────
+# ── FedAvg ────────────────────────────────────────────────────────────[...]
 
 def test_fedavg_runs():
     X, y = make_data(100)
@@ -72,7 +71,7 @@ def test_weighted_average():
     assert abs(avg[0] - 2.0) < 1e-9
 
 
-# ── FedProx ───────────────────────────────────────────────────────────────────
+# ── FedProx ───────────────────────────────────────────────────────────────[...]
 
 def test_fedprox_runs():
     X, y = make_data(100)
@@ -81,7 +80,7 @@ def test_fedprox_runs():
     assert len(history) == 5
 
 
-# ── SCAFFOLD ──────────────────────────────────────────────────────────────────
+# ── SCAFFOLD ───────────────────────────────────────────────────────────────[...]
 
 def test_scaffold_runs():
     X, y = make_data(100)
@@ -90,7 +89,7 @@ def test_scaffold_runs():
     assert len(history) == 5
 
 
-# ── Central ───────────────────────────────────────────────────────────────────
+# ── Central ───────────────────────────────────────────────────────────────[...]
 
 def test_central_runs():
     X, y = make_data(100)
@@ -99,7 +98,7 @@ def test_central_runs():
     assert len(weights) == 4
 
 
-# ── DP-SGD ────────────────────────────────────────────────────────────────────
+# ── DP-SGD ───────────────────────────────────────────────────────────────[...]
 
 def test_dpsgd_runs():
     X, y = make_data(100)
@@ -126,7 +125,7 @@ def test_epsilon_positive():
     assert eps > 0
 
 
-# ── Metrics ───────────────────────────────────────────────────────────────────
+# ── Metrics ───────────────────────────────────────────────────────────────[...]
 
 def test_confusion_matrix():
     cm = confusion_matrix([1, 0, 1, 0], [1, 0, 0, 1])
@@ -157,7 +156,7 @@ def test_feature_importance_normalized():
     assert abs(total - 1.0) < 1e-3  # Allow 4-decimal rounding (0.9999...)
 
 
-# ── Preprocessing ─────────────────────────────────────────────────────────────
+# ── Preprocessing ─────────────────────────────────────────────────────────────[...]
 
 def test_min_max_normalize():
     data = [[0.0, 10.0], [1.0, 20.0], [2.0, 30.0]]

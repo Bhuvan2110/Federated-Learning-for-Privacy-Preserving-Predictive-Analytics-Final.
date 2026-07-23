@@ -7,12 +7,12 @@ import random
 
 from app.ml.logistic_regression import (
     compute_gradients, sgd_step, predict_proba, binary_cross_entropy,
-    compute_accuracy, predict, init_weights,
+    compute_accuracy, init_weights,
 )
 from app.ml.fl_algorithms import weighted_average, scalar_avg
 
 
-# ── Gradient Clipping ─────────────────────────────────────────────────────────
+# ── Gradient Clipping ────────────────────────────────────────────────────────────[...]
 
 def clip_gradient(grad_w: list[float], grad_b: float, clip_norm: float) -> tuple[list[float], float]:
     """Per-sample gradient clipping to bound L2 sensitivity."""
@@ -24,7 +24,7 @@ def clip_gradient(grad_w: list[float], grad_b: float, clip_norm: float) -> tuple
     return grad_w, grad_b
 
 
-# ── Gaussian Noise ────────────────────────────────────────────────────────────
+# ── Gaussian Noise ─────────────────────────────────────────────────────────────[...]
 
 def add_gaussian_noise(
     grad_w: list[float],
@@ -43,7 +43,7 @@ def add_gaussian_noise(
     return noisy_w, noisy_b
 
 
-# ── Moments Accountant (simplified Rényi DP → (ε, δ)-DP) ─────────────────────
+# ── Moments Accountant (simplified Rényi DP → (ε, δ)-DP) ─────────────────────────
 
 def compute_epsilon(
     noise_multiplier: float,
@@ -71,7 +71,7 @@ def compute_epsilon(
     return round(best_eps, 4)
 
 
-# ── DP-SGD Local Training ─────────────────────────────────────────────────────
+# ── DP-SGD Local Training ─────────────────────────────────────────────────────────
 
 def dpsgd_local_train(
     weights: list[float],
@@ -124,7 +124,7 @@ def dpsgd_local_train(
     return weights, bias, loss
 
 
-# ── DP-SGD Federated Training ─────────────────────────────────────────────────
+# ── DP-SGD Federated Training ─────────────────────────────────────────────────────
 
 def run_dpsgd(
     clients: list[tuple],

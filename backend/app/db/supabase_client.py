@@ -8,6 +8,7 @@ import socket
 import json
 import uuid
 import sqlite3
+import threading
 from urllib.parse import urlparse
 from functools import lru_cache
 from supabase import create_client, Client
@@ -338,8 +339,6 @@ class LocalMockSupabaseClient:
         return LocalMockQueryBuilder(table_name, self.db_path)
 
 # --- DNS Reachability check ---
-
-import threading
 
 def is_supabase_reachable(url: str) -> bool:
     try:

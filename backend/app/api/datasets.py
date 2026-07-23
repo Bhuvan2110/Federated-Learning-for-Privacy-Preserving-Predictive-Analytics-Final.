@@ -1,11 +1,10 @@
 """
 Datasets API — CSV upload to Supabase Storage + preprocessing.
 """
-import io
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from app.api.dependencies import get_current_user
 from app.db.supabase_client import get_supabase
-from app.ml.preprocessing import parse_csv, profile_columns, min_max_normalize
+from app.ml.preprocessing import parse_csv, profile_columns
 
 router = APIRouter(prefix="/dataset", tags=["datasets"])
 

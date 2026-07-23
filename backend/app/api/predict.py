@@ -2,16 +2,13 @@
 Prediction API — single & batch inference with Platt-scaled confidence.
 """
 import json
-import io
-import csv
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Any
 from app.api.dependencies import get_current_user
 from app.db.supabase_client import get_supabase
-from app.ml.logistic_regression import predict_proba, predict
+from app.ml.logistic_regression import predict_proba
 from app.ml.preprocessing import apply_scaler, compute_input_hash, parse_csv
-from app.ml.metrics import platt_scaling_fit, platt_scaling_predict
 
 router = APIRouter(prefix="/predict", tags=["predictions"])
 
